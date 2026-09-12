@@ -1,0 +1,1925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="description" content="Bilingual deterministic field-visit planner. Single-user, offline.">
+<title>Mauvine Rota — Field Visit Planner</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9' fill='%236D4461'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg-page:#F5F1F4;
+  --bg-card:#FBF9FA;
+  --bg-raised:#FFFFFF;
+  --wash-hover:#F3ECF1;
+  --wash-selected:#EDE3EA;
+  --ink-900:#322230;
+  --ink-700:#52414C;
+  --ink-500:#806C7A;
+  --ink-400:#A1909C;
+  --ink-300:#C4B6C0;
+  --hairline:#E9E1E7;
+  --hairline-strong:#DDCFDA;
+  --primary:#6D4461;
+  --primary-hover:#5E3A53;
+  --primary-active:#4F3046;
+  --on-primary:#F9F4F7;
+  --accent-soft:#9A6B8C;
+  --shadow-tint:rgba(70,36,64,.07);
+  --focus-ring:rgba(154,107,140,.45);
+  --ease:cubic-bezier(.2,0,0,1);
+  --r-card:20px; --r-ctl:12px; --r-cta:14px;
+}
+*{box-sizing:border-box}
+html{scrollbar-width:thin;scrollbar-color:var(--ink-300) transparent}
+html.modal-open{overflow:hidden}
+body{margin:0;background:var(--bg-page);color:var(--ink-900);
+  font-family:"Instrument Sans","IBM Plex Sans Arabic",system-ui,sans-serif;
+  font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+.mono{font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace}
+.ic{width:16px;height:16px;flex:0 0 auto}
+.ic.sp{width:13px;height:13px}
+.ic.tpin{width:9px;height:9px;display:inline-block;vertical-align:middle}
+:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px;border-radius:4px}
+::selection{background:var(--wash-selected)}
+html[dir="rtl"] *{letter-spacing:0!important}
+html[dir="rtl"] .dh{font-style:normal}
+html[dir="rtl"] .tile{width:66px}
+.mast{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:30px 24px 16px}
+.brand{display:flex;align-items:center;gap:15px}
+.mark{width:44px;height:44px;border-radius:14px;background:var(--primary);display:grid;place-items:center;color:var(--on-primary);box-shadow:0 6px 16px -6px var(--shadow-tint)}
+.mark svg{width:25px;height:25px}
+.brand h1{font-family:Fraunces,"IBM Plex Sans Arabic",serif;font-weight:600;font-size:27px;letter-spacing:-.015em;margin:0;line-height:1.1}
+.tagline{font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-weight:600;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-400);margin-top:5px}
+.mast-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.seedchip{font-weight:600;font-size:11px;letter-spacing:.06em;color:var(--ink-500);border:1px solid var(--hairline-strong);border-radius:999px;padding:7px 14px;background:var(--bg-card)}
+.seedchip b{color:var(--primary)}
+.tabbar{padding:10px 24px 4px;position:sticky;top:0;z-index:30;background:linear-gradient(var(--bg-page) 78%,rgba(245,241,244,0))}
+.tabs{display:inline-flex;gap:4px;background:var(--bg-card);border:1px solid var(--hairline);border-radius:999px;padding:5px;box-shadow:0 1px 2px var(--shadow-tint);max-width:100%;overflow-x:auto}
+.tab{display:flex;gap:8px;align-items:center;border:0;background:transparent;padding:8px 16px;border-radius:999px;font:inherit;font-weight:600;font-size:13.5px;color:var(--ink-500);cursor:pointer;transition:background .18s var(--ease),color .18s var(--ease);white-space:nowrap}
+.tab:hover{background:var(--wash-hover);color:var(--ink-700)}
+.tab.on{background:var(--wash-selected);color:var(--primary)}
+.tab .ic{width:15px;height:15px}
+main.wrap{padding-top:22px;padding-bottom:60px}
+.view{display:none}.view.on{display:block;animation:fadein .3s var(--ease)}
+@keyframes fadein{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.card{background:var(--bg-card);border:1px solid var(--hairline);border-radius:var(--r-card);padding:22px 24px;box-shadow:0 1px 2px var(--shadow-tint),0 16px 40px -24px var(--shadow-tint)}
+.card+.card{margin-top:18px}
+.card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.kicker{font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-weight:600;font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-400);margin-bottom:5px}
+.ctitle{font-family:Fraunces,"IBM Plex Sans Arabic",serif;font-weight:600;font-size:21px;letter-spacing:-.01em;margin:0;line-height:1.15}
+.quiet{color:var(--ink-500);font-size:13px;margin:12px 0 0;display:flex;align-items:center;gap:6px}
+.quiet .ic{width:13px;height:13px;color:var(--ink-300)}
+.tiny{font-size:11.5px}
+.grow{flex:1}
+.chiprow{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.chip{font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-weight:600;font-size:11px;letter-spacing:.05em;color:var(--ink-700);border:1px solid var(--hairline-strong);border-radius:999px;padding:4px 11px;background:var(--bg-raised)}
+.chip.bad{background:var(--primary-active);color:var(--on-primary);border-color:var(--primary-active)}
+.chip.bend{background:var(--wash-selected);color:var(--primary);border-color:var(--accent-soft)}
+.tag{display:inline-flex;align-items:center;font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-weight:600;font-size:10px;letter-spacing:.09em;text-transform:uppercase;padding:3px 9px;border-radius:7px}
+.tag.main{background:var(--wash-selected);color:var(--primary)}
+.tag.con,.tag.contracted{border:1px dashed var(--hairline-strong);color:var(--accent-soft)}
+.tag.excluded{background:transparent;border:1px dashed var(--ink-300);color:var(--ink-400)}
+.tag.fin{background:var(--wash-selected);color:var(--primary)}
+.tag.clin{border:1px solid var(--hairline-strong);color:var(--ink-700);background:transparent}
+.seg{display:inline-flex;background:var(--bg-raised);border:1px solid var(--hairline);border-radius:11px;padding:2px;gap:2px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;padding:5px 12px;border-radius:8px;font:600 12.5px "Instrument Sans","IBM Plex Sans Arabic",sans-serif;color:var(--ink-500);cursor:pointer;transition:all .16s var(--ease)}
+.seg button:hover{background:var(--wash-hover);color:var(--ink-700)}
+.seg button.on{background:var(--wash-selected);color:var(--primary)}
+.seg.mini button{padding:3.5px 9px;font-size:11.5px}
+.inp{border:1px solid var(--hairline-strong);border-radius:var(--r-ctl);padding:8px 12px;font:inherit;font-size:14px;background:var(--bg-raised);color:var(--ink-900);transition:border-color .16s var(--ease)}
+.inp:focus{outline:2px solid var(--focus-ring);outline-offset:1px;border-color:var(--accent-soft)}
+.inp.slim{padding:7px 10px;font-size:13.5px}
+.inp.tinyp{padding:4px 7px;font-size:11.5px;width:126px}
+.numwrap{display:inline-flex;align-items:center;gap:6px}
+.unit{color:var(--ink-400);font-size:11.5px;font-weight:600}
+.sw{position:relative;width:40px;height:23px;border-radius:999px;background:var(--ink-300);border:0;cursor:pointer;transition:background .18s var(--ease);flex:0 0 auto}
+.sw::after{content:"";position:absolute;top:2.5px;left:2.5px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(50,34,48,.25);transition:left .18s var(--ease)}
+.sw.on{background:var(--primary)}
+.sw.on::after{left:19.5px}
+.step{display:inline-flex;align-items:center;border:1px solid var(--hairline-strong);border-radius:999px;background:var(--bg-raised);overflow:hidden}
+.step button{width:28px;height:28px;border:0;background:transparent;color:var(--ink-700);cursor:pointer;display:grid;place-items:center;transition:background .15s var(--ease)}
+.step button:hover{background:var(--wash-hover)}
+.step button .ic{width:12px;height:12px}
+.step .v{min-width:28px;text-align:center;font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-weight:600;font-size:13px;color:var(--ink-900)}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--hairline-strong);background:var(--bg-raised);color:var(--ink-700);font:600 14px "Instrument Sans","IBM Plex Sans Arabic",sans-serif;padding:9px 17px;border-radius:var(--r-cta);cursor:pointer;transition:all .16s var(--ease)}
+.btn:hover{background:var(--wash-hover);color:var(--ink-900)}
+.btn:active{transform:translateY(1px)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+.btn.primary:hover{background:var(--primary-hover)}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--ink-500)}
+.btn.ghost:hover{background:var(--wash-hover);color:var(--ink-700)}
+.ibtn{width:30px;height:30px;border-radius:9px;border:1px solid transparent;background:transparent;color:var(--ink-400);display:inline-grid;place-items:center;cursor:pointer;transition:all .15s var(--ease)}
+.ibtn:hover{background:var(--wash-hover);color:var(--ink-700)}
+.ibtn .ic{width:15px;height:15px}
+.ibtn.arm,.btn.arm{background:var(--primary-active)!important;color:var(--on-primary)!important;border-color:var(--primary-active)!important;font-size:12px}
+.linkbtn{border:0;background:none;color:var(--accent-soft);font:600 12.5px "Instrument Sans","IBM Plex Sans Arabic",sans-serif;cursor:pointer;display:inline-flex;gap:6px;align-items:center;padding:5px 8px;border-radius:8px}
+.linkbtn:hover{background:var(--wash-hover);color:var(--primary)}
+.linkbtn .ic{width:12px;height:12px}
+.rng{-webkit-appearance:none;appearance:none;height:20px;width:112px;background:transparent;cursor:pointer;--fill:50%}
+.rng::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(to right,var(--primary) 0,var(--primary) var(--fill),var(--hairline-strong) var(--fill))}
+.rng::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--bg-raised);border:2px solid var(--primary);margin-top:-5.5px;box-shadow:0 1px 3px var(--shadow-tint)}
+.rng::-moz-range-track{height:4px;border-radius:2px;background:var(--hairline-strong)}
+.rng::-moz-range-progress{height:4px;border-radius:2px;background:var(--primary)}
+.rng::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--bg-raised);border:2px solid var(--primary)}
+.scope-row{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap}
+.fld{display:flex;flex-direction:column;gap:5px;font:600 11px "JetBrains Mono","IBM Plex Sans Arabic",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-400)}
+.scope-meta{color:var(--ink-500);font-size:13px;padding-bottom:9px}
+.scope-meta b{color:var(--ink-900)}
+.ribbon{display:flex;gap:8px;overflow-x:auto;padding:16px 2px 8px;scrollbar-width:thin}
+.tile{flex:0 0 auto;width:54px;padding:9px 0 7px;border-radius:14px;border:1px solid var(--hairline);background:var(--bg-raised);cursor:pointer;text-align:center;transition:all .16s var(--ease)}
+.tile:hover{border-color:var(--accent-soft);background:var(--wash-hover)}
+.tile .dw{display:block;font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-weight:600;font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-400);white-space:nowrap}
+.tile .dn{display:block;font-family:Fraunces,"IBM Plex Sans Arabic",serif;font-weight:600;font-size:20px;line-height:1.15;color:var(--ink-900);margin-top:1px}
+.tile.off{opacity:.45;background:transparent}
+.tile.off .dn{color:var(--ink-400);text-decoration:line-through;text-decoration-thickness:1px;text-decoration-color:var(--ink-300)}
+.tile.sel{border-color:var(--primary);box-shadow:0 0 0 3px var(--focus-ring)}
+.tile .tdots{display:flex;gap:3px;justify-content:center;align-items:center;height:8px;margin-top:3px}
+.tile .tdots i{width:5px;height:5px;border-radius:50%;background:var(--primary)}
+.tile .tdots i.sq{border-radius:1.5px;background:var(--accent-soft)}
+.tile .tdots .ic.tpin{color:var(--accent-soft)}
+.day-edit{display:flex;align-items:center;gap:22px;flex-wrap:wrap;background:var(--wash-hover);border-radius:14px;padding:13px 18px;margin-top:8px}
+.de-date b{font-family:Fraunces,"IBM Plex Sans Arabic",serif;font-size:16px;font-weight:600}
+.de-date span{color:var(--ink-500);font-size:12.5px;margin-inline-start:8px}
+.de-ctl{display:flex;align-items:center;gap:10px}
+.de-ctl .lbl{font:600 11px "JetBrains Mono","IBM Plex Sans Arabic",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-400)}
+.cta-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:18px}
+.tblwrap{overflow-x:auto}
+.sched{width:100%;border-collapse:collapse;min-width:820px}
+.sched thead th{font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-weight:600;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-400);text-align:start;padding:10px 12px;border-bottom:1px solid var(--hairline-strong)}
+.numth{text-align:end!important}
+.sched td{padding:11px 12px;border-bottom:1px solid var(--hairline);vertical-align:middle}
+.dayhead td{background:var(--wash-hover);border-bottom:1px solid var(--hairline-strong);padding:8px 14px}
+.dh{font-family:Fraunces,"IBM Plex Sans Arabic",serif;font-style:italic;font-weight:500;font-size:15.5px;color:var(--ink-700)}
+.dh b{font-style:normal;color:var(--ink-900);font-weight:600}
+.dhmeta{margin-inline-start:13px;font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-weight:600;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-400)}
+.dhmeta.pref{color:var(--accent-soft)}
+.vnum{font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;color:var(--ink-400);font-weight:600;font-size:12.5px}
+.fname{font-weight:600;font-size:14px}
+.fname.sm{font-size:13.5px}
+.openv{color:var(--ink-400);font-style:italic}
+.km{font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-size:12.5px;color:var(--ink-700);white-space:nowrap}
+.km .ic{width:11px;height:11px;color:var(--accent-soft)}
+.team{display:flex;flex-wrap:wrap;gap:5px}
+.pill{display:inline-flex;align-items:center;padding:3.5px 12px 4.5px;border-radius:999px;font-weight:600;font-size:12.5px;transition:all .15s var(--ease)}
+.pill.fin{background:var(--wash-selected);color:var(--primary)}
+.pill.clin{background:transparent;border:1px solid var(--hairline-strong);color:var(--ink-700)}
+.pill.open{border:1px dashed var(--ink-300);color:var(--ink-400);font-style:italic;font-size:11.5px;background:transparent}
+.pill.hl{background:var(--wash-selected);color:var(--primary);box-shadow:0 0 0 2px var(--focus-ring)}
+td[data-fac].hl{background:var(--wash-selected)}
+tbody.dayg tr:not(.dayhead):hover td{background:var(--wash-hover)}
+.anim tbody.dayg{animation:rise .42s var(--ease) both;animation-delay:calc(var(--i)*55ms)}
+@keyframes rise{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+.flags{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.flag{display:flex;gap:9px;align-items:flex-start;padding:9px 14px;border-radius:var(--r-ctl);font-size:13.5px}
+.flag .ic{width:15px;height:15px;margin-top:1px}
+.flag.info{background:var(--wash-hover);color:var(--ink-700)}
+.flag.warn{background:var(--wash-selected);color:var(--ink-700)}
+.flag.error{background:var(--primary-active);color:var(--on-primary)}
+.scrollx{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-weight:600;font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-400);text-align:start;padding:10px 12px;border-bottom:1px solid var(--hairline-strong)}
+td{padding:10px 12px;border-bottom:1px solid var(--hairline);vertical-align:middle}
+tr:hover td{background:var(--wash-hover)}
+.empty{text-align:center;color:var(--ink-400);padding:22px!important;font-style:italic}
+.chipline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.fchip{border:1px solid var(--hairline-strong);background:var(--bg-raised);color:var(--ink-500);font:600 12px "Instrument Sans","IBM Plex Sans Arabic",sans-serif;padding:5px 13px;border-radius:999px;cursor:pointer;transition:all .15s var(--ease)}
+.fchip:hover{background:var(--wash-hover)}
+.fchip.on{background:var(--wash-selected);color:var(--primary);border-color:var(--accent-soft)}
+.wcell{white-space:nowrap}
+.ws{display:inline-flex;vertical-align:middle}
+.wv{font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-size:12px;color:var(--ink-700);margin-inline-start:8px}
+.td-del{width:40px}
+.wds{display:inline-flex;gap:3px}
+.wd{width:22px;height:22px;border-radius:7px;border:1px solid var(--hairline-strong);background:var(--bg-raised);color:var(--ink-400);font:600 10.5px "JetBrains Mono","IBM Plex Sans Arabic",monospace;cursor:pointer;transition:all .14s var(--ease);padding:0}
+.wd:hover{border-color:var(--accent-soft)}
+.wd.on{background:var(--wash-selected);color:var(--primary);border-color:var(--accent-soft)}
+.offs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;max-width:250px}
+.offchip{display:inline-flex;align-items:center;gap:4px;background:var(--wash-hover);border:1px solid var(--hairline);border-radius:999px;padding:3px 6px;padding-inline-start:10px;font:600 11px "JetBrains Mono","IBM Plex Sans Arabic",monospace;color:var(--ink-700)}
+.offchip .ic{width:10px;height:10px;color:var(--ink-400)}
+.offchip button{border:0;background:none;cursor:pointer;padding:2px;display:grid;place-items:center;border-radius:50%}
+.offchip button:hover .ic{color:var(--primary)}
+.loadc{display:flex;align-items:center;gap:8px;min-width:96px}
+.loadc b{font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-size:13px}
+.bar{height:6px;border-radius:3px;background:var(--hairline);flex:1;min-width:50px;overflow:hidden}
+.bar i{display:block;height:100%;border-radius:3px;background:var(--primary);width:0;transition:width .5s var(--ease)}
+.bar.clin i{background:var(--accent-soft)}
+.bcell{width:120px}
+.bcell .bar{min-width:80px}
+.wdgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px}
+.wdcell{border:1px solid var(--hairline);border-radius:14px;padding:12px;background:var(--bg-raised);display:flex;flex-direction:column;gap:9px;align-items:flex-start}
+.wdcell.off{opacity:.55}
+.wdtop{display:flex;width:100%;justify-content:space-between;align-items:center}
+.wdname{font-family:Fraunces,"IBM Plex Sans Arabic",serif;font-weight:600;font-size:14.5px}
+.staffrow,.rowline{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:11px 0;border-bottom:1px dashed var(--hairline)}
+.staffrow:last-of-type,.rowline:last-of-type{border-bottom:0}
+.slbl{color:var(--ink-500);font-size:13px}
+.rlab{font-weight:600;font-size:13.5px;min-width:210px}
+.adv summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;font-weight:600;font-size:14px;padding:6px 0;color:var(--ink-700)}
+.adv summary::-webkit-details-marker{display:none}
+.adv summary .chev{transition:transform .2s var(--ease);color:var(--ink-400)}
+.adv[open] summary .chev{transform:rotate(180deg)}
+.adv summary .quiet{margin:0}
+.wtable{display:flex;flex-direction:column;margin:10px 0 4px}
+.wrow{display:grid;grid-template-columns:44px 200px 1fr 40px;align-items:center;gap:12px;padding:9px 0;border-bottom:1px dashed var(--hairline)}
+.wrow:last-child{border-bottom:0}
+.wlab{font-weight:600;font-size:13.5px}
+.wrow .wv{text-align:end;margin:0}
+.btnrow{display:flex;gap:10px;flex-wrap:wrap}
+.statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:2px 34px}
+.stat{display:flex;justify-content:space-between;gap:14px;padding:11px 0;border-bottom:1px dashed var(--hairline);align-items:baseline}
+.sl{font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-weight:600;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-400)}
+.sv{font-family:Fraunces,"IBM Plex Sans Arabic",serif;font-weight:600;font-size:17px;text-align:end}
+.checks{display:flex;flex-direction:column}
+.check{display:flex;align-items:baseline;gap:11px;padding:11px 2px;border-bottom:1px dashed var(--hairline)}
+.check:last-child{border-bottom:0}
+.check .ic{width:16px;height:16px;align-self:center}
+.check.ok .ic{color:var(--primary)}
+.check.bad .ic{color:var(--accent-soft)}
+.clbl{font-weight:600;width:180px;flex:0 0 auto;font-size:13.5px}
+.cval{color:var(--ink-500);font-size:13px}
+.poolblk{margin-top:6px}
+.poolblk+.poolblk{margin-top:20px}
+.poolhead{display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap}
+.poolhead .quiet{margin:0}
+.frow{display:grid;grid-template-columns:170px 1fr 26px 52px;align-items:center;gap:12px;padding:7px 0}
+.frow .fname{font-size:13.5px}
+.dimrow td{border-bottom:0}
+.empty-state{text-align:center;padding:46px 20px}
+.empty-state .ctitle{margin:12px 0 6px}
+.empty-state .bigic{width:34px;height:34px;color:var(--ink-300)}
+#toasts{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);display:flex;flex-direction:column;gap:8px;z-index:99;align-items:center}
+.toast{background:var(--ink-900);color:var(--bg-page);padding:11px 19px;border-radius:999px;box-shadow:0 10px 28px rgba(50,34,48,.3);display:flex;gap:10px;align-items:center;font-size:13.5px;font-weight:600;animation:rise .3s var(--ease)}
+.toast .ic{width:15px;height:15px;color:var(--accent-soft)}
+.toast.warn .ic{color:var(--ink-300)}
+.toast.out{opacity:0;transform:translateY(8px);transition:all .3s var(--ease)}
+.foot{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:26px 24px 34px;color:var(--ink-500);font-size:12px;border-top:1px solid var(--hairline);margin-top:16px}
+kbd{border:1px solid var(--hairline-strong);background:var(--bg-raised);border-radius:5px;padding:1px 6px;font:600 10.5px "JetBrains Mono","IBM Plex Sans Arabic",monospace;color:var(--ink-700)}
+.overlay{position:fixed;inset:0;background:rgba(50,34,48,.32);display:grid;place-items:center;z-index:60;padding:20px;animation:fadein .18s var(--ease)}
+.modal{width:min(880px,100%);max-height:88vh;overflow:auto;background:var(--bg-card);border:1px solid var(--hairline-strong);border-radius:var(--r-card);box-shadow:0 40px 90px -30px rgba(50,34,48,.4);padding:22px 24px}
+.mhead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:6px}
+.msec{margin-top:14px}
+.mlab{font:600 11px "JetBrains Mono","IBM Plex Sans Arabic",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-400);margin-bottom:8px}
+.colgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px 18px}
+.colcell{display:flex;align-items:center;gap:9px;font-weight:600;font-size:13px}
+.chipwrap{display:flex;flex-wrap:wrap;gap:6px;max-height:110px;overflow:auto;scrollbar-width:thin}
+.hchip{border:1px solid var(--hairline-strong);background:var(--bg-raised);color:var(--ink-700);font:600 12px "Instrument Sans","IBM Plex Sans Arabic",sans-serif;padding:4px 12px;border-radius:999px;cursor:pointer;transition:all .15s var(--ease)}
+.hchip:hover{background:var(--wash-hover)}
+.hchip.off{opacity:.45;text-decoration:line-through;text-decoration-thickness:1px;color:var(--ink-400)}
+.prev{font-family:"JetBrains Mono","IBM Plex Sans Arabic",monospace;font-size:11.5px;line-height:1.65;background:var(--bg-raised);border:1px solid var(--hairline);border-radius:12px;padding:14px;overflow:auto;max-height:280px;color:var(--ink-700);white-space:pre;margin:0;direction:ltr;text-align:left}
+.mfoot{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+@media (max-width:860px){
+  .mast{flex-direction:column;align-items:flex-start}
+  .rlab{min-width:100%}
+  .frow{grid-template-columns:120px 1fr 22px 44px}
+  .clbl{width:100%}
+  .wrow{grid-template-columns:44px 1fr 40px;grid-template-areas:"t l v" "t s s"}
+  .wrow .sw{grid-area:t}.wrow .wlab{grid-area:l}.wrow .rng{grid-area:s;width:100%}.wrow .wv{grid-area:v}
+  .tab .tablab{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media print{
+  body{background:#fff}
+  .mast,.tabbar,.foot,#toasts,#planCtl,.quiet,.chiprow,.overlay{display:none!important}
+  .view{display:none!important}
+  #view-plan{display:block!important}
+  .card{border:0;box-shadow:none;padding:0}
+  .sched{min-width:0}
+}
+</style>
+</head>
+<body>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="ic-mark" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="4.1" fill="currentColor"/>
+    <g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+      <path d="M12 2.7v3.6M12 17.7v3.6M2.7 12h3.6M17.7 12h3.6M5.4 5.4l2.5 2.5M16.1 16.1l2.5 2.5M18.6 5.4l-2.5 2.5M7.9 16.1l-2.5 2.5"/>
+    </g>
+  </symbol>
+  <symbol id="ic-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/>
+  </symbol>
+  <symbol id="ic-build" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4.5" y="3.5" width="15" height="17" rx="2.5"/><path d="M8 12.5h2M14 12.5h2M8 16h2M14 16h2M4.5 9h15M12 9v11.5"/>
+  </symbol>
+  <symbol id="ic-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="9" cy="8.2" r="3.4"/><path d="M3.2 19.5c.5-3.2 2.8-5.1 5.8-5.1s5.3 1.9 5.8 5.1"/><circle cx="17" cy="9.2" r="2.7"/><path d="M15.9 14.4c2.5.4 4.3 2.3 4.7 4.9"/>
+  </symbol>
+  <symbol id="ic-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 4.5v15h16"/><path d="M8.5 16.5v-5M13 16.5v-9M17.5 16.5v-6.5"/>
+  </symbol>
+  <symbol id="ic-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 7h8.2M18.8 7H20M4 12h3.2M13.2 12H20M4 17h10.2"/><circle cx="15.5" cy="7" r="2.1"/><circle cx="10" cy="12" r="2.1"/><circle cx="17.8" cy="17" r="2.1"/>
+  </symbol>
+  <symbol id="ic-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5.5v13M5.5 12h13"/></symbol>
+  <symbol id="ic-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5.5 12h13"/></symbol>
+  <symbol id="ic-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+  <symbol id="ic-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 7h15M9.5 7V4.8h5V7M6.8 7l.9 12.8h8.6L17.2 7"/><path d="M10.2 10.8v5.2M13.8 10.8v5.2"/>
+  </symbol>
+  <symbol id="ic-dice" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+    <rect x="4" y="4" width="16" height="16" rx="4"/>
+    <circle cx="9" cy="9" r="1.25" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.25" fill="currentColor" stroke="none"/>
+    <circle cx="9" cy="15" r="1.25" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.25" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="ic-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5v11M7.5 11.5L12 16l4.5-4.5M5 20h14"/></symbol>
+  <symbol id="ic-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19.5v-11M7.5 12.5L12 8l4.5 4.5M5 4h14"/></symbol>
+  <symbol id="ic-print" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8.5V3.8h10V8.5"/><rect x="4" y="8.5" width="16" height="7.5" rx="2.2"/><path d="M7 13h10v7.2H7z"/></symbol>
+  <symbol id="ic-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.4"/><path d="M6 14.5H5.2c-1 0-1.9-.8-1.9-1.9V5.2c0-1 .9-1.9 1.9-1.9h7.4c1 0 1.9.9 1.9 1.9v.9"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.4 4.4L19 7.5"/></symbol>
+  <symbol id="ic-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.6L21.4 20.2H2.6z"/><path d="M12 9.8v4.6M12 17.4h.01"/></symbol>
+  <symbol id="ic-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.6"/><path d="M12 11v5.4M12 7.6h.01"/></symbol>
+  <symbol id="ic-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21.2S5.8 15.7 5.8 10.6a6.2 6.2 0 1 1 12.4 0c0 5.1-6.2 10.6-6.2 10.6z"/><circle cx="12" cy="10.3" r="2.3"/></symbol>
+  <symbol id="ic-wand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.8 4.6l1.6 3.9 3.9 1.6-3.9 1.6-1.6 3.9-1.6-3.9-3.9-1.6 3.9-1.6z"/><path d="M17.6 14.2l.9 2.2 2.2.9-2.2.9-.9 2.2-.9-2.2-2.2-.9 2.2-.9z"/></symbol>
+  <symbol id="ic-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10l5 5 5-5"/></symbol>
+</svg>
+
+<div class="wrap mast">
+  <div class="brand">
+    <div class="mark"><svg viewBox="0 0 24 24"><use href="#ic-mark"/></svg></div>
+    <div>
+      <h1>Mauvine Rota</h1>
+      <div class="tagline" id="taglineTxt">field visit planner</div>
+    </div>
+  </div>
+  <div class="mast-right">
+    <div class="seg mini" role="group" aria-label="language">
+      <button class="langbtn" data-act="lang" data-v="en">EN</button>
+      <button class="langbtn" data-act="lang" data-v="ar">ع</button>
+    </div>
+    <div class="seedchip mono" id="seedChip"></div>
+  </div>
+</div>
+
+<nav class="tabbar"><div class="wrap"><div class="tabs" role="tablist" aria-label="Sections">
+  <button class="tab on" role="tab" data-act="tab" data-view="plan"><svg class="ic"><use href="#ic-cal"/></svg><span class="tablab" data-tl="Plan">Plan</span></button>
+  <button class="tab" role="tab" data-act="tab" data-view="facilities"><svg class="ic"><use href="#ic-build"/></svg><span class="tablab" data-tl="Fac">Facilities</span></button>
+  <button class="tab" role="tab" data-act="tab" data-view="people"><svg class="ic"><use href="#ic-users"/></svg><span class="tablab" data-tl="People">People</span></button>
+  <button class="tab" role="tab" data-act="tab" data-view="summary"><svg class="ic"><use href="#ic-chart"/></svg><span class="tablab" data-tl="Sum">Summary</span></button>
+  <button class="tab" role="tab" data-act="tab" data-view="settings"><svg class="ic"><use href="#ic-sliders"/></svg><span class="tablab" data-tl="Set">Settings</span></button>
+</div></div></nav>
+
+<main class="wrap">
+  <section id="view-plan" class="view on"><div id="planCtl"></div><div id="resultBox"></div></section>
+  <section id="view-facilities" class="view"></section>
+  <section id="view-people" class="view"></section>
+  <section id="view-summary" class="view"></section>
+  <section id="view-settings" class="view"></section>
+</main>
+
+<footer class="wrap foot">
+  <span id="footHint"></span>
+  <span id="footNote"></span>
+</footer>
+
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+'use strict';
+const APPV='v1.0';
+const T={
+  tagline:{en:'field visit planner',ar:'مخطّط الزيارات الميدانية'},
+  seed:{en:'seed',ar:'البذرة'}, det:{en:'deterministic',ar:'حتمي'},
+  tabPlan:{en:'Plan',ar:'الخطة'}, tabFac:{en:'Facilities',ar:'المرافق'},
+  tabPeople:{en:'People',ar:'الفريق'}, tabSum:{en:'Summary',ar:'الملخص'}, tabSet:{en:'Settings',ar:'الإعدادات'},
+  footHint:{en:'<kbd>1</kbd>–<kbd>5</kbd> tabs · <kbd>G</kbd> generate · <kbd>R</kbd> reroll · <kbd>E</kbd> export',
+            ar:'<kbd>1</kbd>–<kbd>5</kbd> تبويبات · <kbd>G</kbd> إنشاء · <kbd>R</kbd> بذرة · <kbd>E</kbd> تصدير'},
+  footNote:{en:'Runs locally · autosaves · same seed + data = same plan.',
+            ar:'يعمل محلياً · حفظ تلقائي · نفس البذرة والبيانات = نفس الخطة.'},
+  kScope:{en:'Scope',ar:'النطاق'}, winTitle:{en:'Plan window',ar:'نافذة الخطة'},
+  start:{en:'Start',ar:'البداية'}, end:{en:'End',ar:'النهاية'},
+  wDay:{en:'working day',ar:'يوم عمل'}, wDays:{en:'working days',ar:'أيام عمل'},
+  visit1:{en:'visit',ar:'زيارة'}, visits:{en:'visits',ar:'زيارات'},
+  dayOn:{en:'day on',ar:'يوم فعّال'}, dayOff:{en:'day off',ar:'عطلة'},
+  visitsLbl:{en:'Visits',ar:'الزيارات'}, favor:{en:'Favor',ar:'التفضيل'},
+  auto:{en:'Auto',ar:'تلقائي'}, main:{en:'Main',ar:'رئيسي'}, near:{en:'Near',ar:'قريب'},
+  week:{en:'Week',ar:'أسبوع'}, month:{en:'Month',ar:'شهر'}, custom:{en:'Custom',ar:'مخصص'},
+  resetDef:{en:'reset to weekday default',ar:'استعادة افتراضي اليوم'},
+  followsDef:{en:'following the {d} default — edit in Settings',ar:'حسب افتراضي {d} — عدّله في الإعدادات'},
+  gen:{en:'Generate plan',ar:'إنشاء الخطة'}, reroll:{en:'Reroll',ar:'بذرة جديدة'},
+  expPlan:{en:'Export…',ar:'تصدير…'}, print:{en:'Print',ar:'طباعة'},
+  liveNote:{en:'Edits rebuild the plan live.',ar:'أي تعديل يعيد بناء الخطة فوراً.'},
+  kSched:{en:'Schedule',ar:'الجدول'}, nothing:{en:'Nothing to plan',ar:'لا شيء للتخطيط'},
+  facility:{en:'Facility',ar:'المرفق'}, type:{en:'Type',ar:'النوع'}, dist:{en:'Distance',ar:'المسافة'},
+  finTeam:{en:'Financial team',ar:'الفريق المالي'}, clinTeam:{en:'Clinical team',ar:'الفريق الطبي'},
+  contr:{en:'Contr.',ar:'متعاقد'}, excl:{en:'Excl.',ar:'مستبعد'},
+  openVisit:{en:'open visit',ar:'زيارة مفتوحة'}, open:{en:'open',ar:'مفتوح'},
+  km:{en:'km',ar:'كم'}, favorsNear:{en:'favors near',ar:'يفضّل القريب'}, favorsMain:{en:'favors main',ar:'يفضّل الرئيسي'},
+  openF:{en:'open',ar:'مفتوحة'}, bentF:{en:'bent',ar:'مكسورة'}, clean:{en:'rules clean',ar:'القواعد سليمة'},
+  hoverNote:{en:'Hover a name to trace it across the plan.',ar:'مرّر على الاسم لتتبّعه في الخطة.'},
+  kLedger:{en:'Ledger',ar:'السجل'}, addFac:{en:'Add facility',ar:'إضافة مرفق'},
+  all:{en:'All',ar:'الكل'}, mainPl:{en:'main',ar:'رئيسية'}, conPl:{en:'contracted',ar:'متعاقدة'}, excPl:{en:'excluded',ar:'مستبعدة'},
+  target:{en:'target',ar:'الهدف'}, weight:{en:'Weight',ar:'الوزن'}, on:{en:'On',ar:'مفعّل'},
+  noFac:{en:'No facilities here — add one, import CSV, or restore example data.',
+         ar:'لا مرافق هنا — أضف واحداً أو استورد CSV أو استعد البيانات النموذجية.'},
+  facNote:{en:'Distance from the shared zero point · excluded never planned · weight biases rotation. CSV: name,type,km,weight,active.',
+           ar:'المسافة من نقطة الصفر المشتركة · المستبعد لا يُخطَّط · الوزن يؤثر في التناوب. CSV: name,type,km,weight,active.'},
+  phFac:{en:'Facility name',ar:'اسم المرفق'}, remove:{en:'Remove',ar:'حذف'},
+  kPools:{en:'Pools',ar:'الفرق'}, peopleT:{en:'People',ar:'الأفراد'}, addPerson:{en:'Add person',ar:'إضافة فرد'},
+  finPl:{en:'financial',ar:'مالية'}, clinPl:{en:'clinical',ar:'طبية'},
+  person:{en:'Person',ar:'الفرد'}, pool:{en:'Pool',ar:'الفريق'}, origin:{en:'Origin',ar:'المقر'},
+  prefers:{en:'Prefers',ar:'التفضيل'}, far:{en:'Far',ar:'بعيد'}, noneP:{en:'—',ar:'بلا'},
+  finS:{en:'Fin.',ar:'مالي'}, clinS:{en:'Clin.',ar:'طبي'},
+  finWord:{en:'financial',ar:'مالي'}, clinWord:{en:'clinical',ar:'طبي'},
+  weekdays:{en:'Weekdays',ar:'أيام الأسبوع'}, offDays:{en:'Off days',ar:'الإجازات'}, load:{en:'Load',ar:'الحمل'},
+  noPeople:{en:'Nobody here — add people, import CSV, or restore example data.',
+            ar:'لا أحد هنا — أضف أفراداً أو استورد CSV أو استعد البيانات النموذجية.'},
+  peopleNote:{en:'Origin = home distance from zero point. CSV: name,pool,origin_km,pref,weight,weekdays(7×1/0),off_dates(|),active.',
+              ar:'المقر = بُعد المنزل عن نقطة الصفر. CSV: name,pool,origin_km,pref,weight,weekdays(7×1/0),off_dates(|),active.'},
+  phName:{en:'Name',ar:'الاسم'}, addOff:{en:'Add an off day',ar:'أضف إجازة'},
+  setIntro:{en:'Defaults already encode the house rules — change only what you need.',
+            ar:'الافتراضيات تُطبّق قواعدك — غيّر ما يلزم فقط.'},
+  kRhythm:{en:'Rhythm',ar:'الإيقاع'}, defWeek:{en:'Default week',ar:'الأسبوع الافتراضي'},
+  unless:{en:'unless a day is overridden in Plan',ar:'إلا لو عُدّل اليوم في الخطة'},
+  kStaff:{en:'Staffing',ar:'التشكيل'}, perVisit:{en:'People per visit',ar:'الأفراد لكل زيارة'},
+  houseRule:{en:'House rule: main = 2 fin + 2 clin · contracted = 1 fin + 2 clin.',
+             ar:'القاعدة: الرئيسي 2 مالي + 2 طبي · المتعاقد 1 مالي + 2 طبي.'},
+  kMix:{en:'Composition',ar:'المزيج'}, mixRot:{en:'Mix & rotation',ar:'المزيج والتناوب'},
+  ratio:{en:'Target ratio',ar:'النسبة المستهدفة'}, mainW:{en:'main',ar:'رئيسي'}, conW:{en:'contracted',ar:'متعاقد'},
+  distinct:{en:'Distinct facilities per day',ar:'مرافق مختلفة كل يوم'},
+  rotFair:{en:'Rotate facilities fairly',ar:'تناوب عادل للمرافق'},
+  kRules:{en:'Rules',ar:'القواعد'}, hardC:{en:'Hard constraints',ar:'قيود صارمة'},
+  noBack:{en:'No back-to-back days per person',ar:'لا يومين متتاليين للفرد'},
+  oneVisit:{en:'One visit per person per day',ar:'زيارة واحدة للفرد يومياً'},
+  whenFill:{en:"When a day can't be filled",ar:'عند تعذّر إكمال اليوم'},
+  strict:{en:'Strict — leave open',ar:'صارم — اتركها مفتوحة'}, bend:{en:'Bend & flag',ar:'اكسر وأشِر'},
+  nearThr:{en:'"Near" threshold',ar:'حدّ «القريب»'}, kmZero:{en:'km from zero point',ar:'كم من نقطة الصفر'},
+  kSolver:{en:'Solver',ar:'الخوارزمية'}, tuning:{en:'Tuning',ar:'الضبط'},
+  advW:{en:'Advanced weighting',ar:'أوزان متقدمة'},
+  advHint:{en:'opinionated defaults — toggle off to neutralize',ar:'قيم رأيية — أطفئ المفتاح لتحييده'},
+  wFair:{en:'Load fairness',ar:'عدالة الحمل'}, wPref:{en:'Near / far preference',ar:'تفضيل قريب/بعيد'},
+  wDist:{en:'Origin distance match',ar:'مطابقة المقر'}, wFac:{en:'Facility weight pull',ar:'سحب وزن المرفق'},
+  wPer:{en:'Person weight pull',ar:'سحب وزن الفرد'},
+  restoreW:{en:'restore default weights',ar:'استعادة الأوزان الافتراضية'},
+  kEng:{en:'Engine',ar:'المحرّك'}, determ:{en:'Determinism',ar:'الحتمية'},
+  seedL:{en:'Seed',ar:'البذرة'}, restarts:{en:'Solver restarts',ar:'محاولات الحل'},
+  autosave:{en:'Auto-save locally',ar:'حفظ تلقائي محلي'},
+  detNote:{en:'Same seed + same data = the same plan. Restarts keep the cleanest attempt.',
+           ar:'نفس البذرة والبيانات = نفس الخطة. المحاولات تحتفظ بأنظف نتيجة.'},
+  kData:{en:'Data',ar:'البيانات'}, yourLedger:{en:'Your ledger',ar:'بياناتك'},
+  dataLbl:{en:'Full ledger',ar:'السجل الكامل'}, setLbl:{en:'Settings only',ar:'الإعدادات فقط'}, resetLbl:{en:'Reset',ar:'إعادة الضبط'},
+  expDataB:{en:'Export JSON',ar:'تصدير JSON'}, impDataB:{en:'Import JSON',ar:'استيراد JSON'},
+  example:{en:'Example data',ar:'بيانات نموذجية'}, resetAll:{en:'Reset everything',ar:'إعادة ضبط الكل'},
+  sure:{en:'sure?',ar:'متأكد؟'}, less:{en:'less',ar:'أقل'}, more:{en:'more',ar:'أكثر'}, toggleA:{en:'toggle',ar:'تبديل'},
+  kSum:{en:'Summary',ar:'الملخص'}, copyRpt:{en:'Copy report',ar:'نسخ التقرير'},
+  workDaysL:{en:'Working days',ar:'أيام العمل'}, totVisits:{en:'Total visits',ar:'إجمالي الزيارات'},
+  pDays:{en:'person-days',ar:'مناوبات'}, totDist:{en:'Total distance',ar:'إجمالي المسافة'},
+  avg:{en:'avg',ar:'متوسط'}, fairG:{en:'Fairness (Gini)',ar:'العدالة (جيني)'},
+  bentOpen:{en:'Bent / open',ar:'مكسور / مفتوح'},
+  kChecks:{en:'Checks',ar:'تدقيق'}, audit:{en:'Rules audit',ar:'تدقيق القواعد'},
+  noBackL:{en:'No back-to-back days',ar:'لا أيام متتالية'},
+  cleanNB:{en:'clean — nobody works adjacent days',ar:'سليم — لا عمل في يومين متتاليين'},
+  nBent:{en:'{n} bent around specific days',ar:'{n} حالة كسر في أيام محددة'},
+  ruleOff:{en:'rule disabled',ar:'القاعدة معطّلة'},
+  fullStaff:{en:'Fully staffed visits',ar:'زيارات مكتملة'},
+  everySlot:{en:'every slot filled',ar:'كل الخانات مكتملة'},
+  nOpenN:{en:'{n} open slot(s) — see notes',ar:'{n} خانة مفتوحة — راجع الملاحظات'},
+  mixL:{en:'Main : contracted mix',ar:'مزيج رئيسي : متعاقد'},
+  achieved:{en:'achieved',ar:'المتحقق'}, targeted:{en:'targeted',ar:'المستهدف'},
+  nearL:{en:'Near-favored days',ar:'أيام تفضيل القريب'},
+  noneScope:{en:'none in this scope',ar:'لا شيء في هذا النطاق'},
+  overThr:{en:'over threshold',ar:'فوق الحدّ'}, maxW:{en:'max',ar:'أقصى'}, spreadW:{en:'spread',ar:'تباعد'},
+  adjL:{en:'Adjacent-day capacity',ar:'سعة الأيام المتجاورة'},
+  tight:{en:'tight — see notes',ar:'ضيّقة — راجع الملاحظات'},
+  poolsCover:{en:'pools comfortably cover adjacent days',ar:'الفرق تغطي الأيام المتجاورة بأريحية'},
+  rotL:{en:'Facility rotation',ar:'تناوب المرافق'},
+  allVisited:{en:'all active facilities visited',ar:'كل المرافق المفعّلة زارت'},
+  nUnused:{en:'{n} active unused',ar:'{n} مفعّلة بلا زيارات'},
+  fairK:{en:'Fairness',ar:'العدالة'}, loadPer:{en:'Load per person',ar:'الحمل لكل فرد'},
+  mean:{en:'mean',ar:'المتوسط'}, range:{en:'range',ar:'المدى'}, gini:{en:'Gini',ar:'جيني'},
+  rotK:{en:'Rotation',ar:'التناوب'}, facUse:{en:'Facility usage',ar:'استخدام المرافق'},
+  share:{en:'Share',ar:'الحصة'}, unusedAct:{en:'Unused active',ar:'غير مستخدمة (مفعّلة)'},
+  dayLed:{en:'Day ledger',ar:'سجل الأيام'}, day:{en:'Day',ar:'اليوم'},
+  kNotes:{en:'Notes',ar:'ملاحظات'}, solverNotes:{en:'Solver notes',ar:'ملاحظات الخوارزمية'},
+  noSum:{en:'No summary yet',ar:'لا ملخص بعد'},
+  genFirst:{en:'Generate a plan first — the summary follows the live roster.',
+            ar:'أنشئ الخطة أولاً — الملخص يتبع الجدول الحالي.'},
+  planReady:{en:'Plan ready',ar:'الخطة جاهزة'}, needsAttn:{en:'The plan needs attention',ar:'الخطة تحتاج مراجعة'},
+  allClean:{en:'all rules clean',ar:'كل القواعد سليمة'},
+  downloaded:{en:'File downloaded',ar:'تم التنزيل'}, imported:{en:'Data imported',ar:'تم استيراد البيانات'},
+  setDone:{en:'Settings imported',ar:'استوردت الإعدادات'},
+  invalid:{en:'Not a valid roster file',ar:'ملف غير صالح'},
+  copied:{en:'Copied',ar:'تم النسخ'}, copyFail:{en:'Copy failed',ar:'فشل النسخ'},
+  exampleDone:{en:'Example data restored',ar:'استيعدت البيانات النموذجية'},
+  resetDone:{en:'Reset to defaults',ar:'أُعيدت الافتراضيات'},
+  noExp:{en:'Nothing to export yet',ar:'لا شيء للتصدير بعد'}, noCopy:{en:'No plan to copy yet',ar:'لا خطة للنسخ بعد'},
+  csvDate:{en:'Date',ar:'التاريخ'}, csvDay:{en:'Day',ar:'اليوم'},
+  csvFac:{en:'Facility',ar:'المرفق'}, csvType:{en:'Type',ar:'النوع'},
+  csvKm:{en:'Distance (km)',ar:'المسافة (كم)'}, csvFin:{en:'Financial',ar:'المالي'},
+  csvClin:{en:'Clinical',ar:'الطبي'}, csvFavor:{en:'Day favor',ar:'تفضيل اليوم'},
+  expTitle:{en:'Export plan',ar:'تصدير الخطة'},
+  fmtK:{en:'Format',ar:'الصيغة'}, colsK:{en:'Columns',ar:'الأعمدة'},
+  hideP:{en:'Hide people',ar:'إخفاء أفراد'}, hideF:{en:'Hide facilities',ar:'إخفاء مرافق'},
+  prevK:{en:'Preview',ar:'معاينة'},
+  copyB:{en:'Copy',ar:'نسخ'}, dlB:{en:'Download',ar:'تنزيل'}, closeB:{en:'Close',ar:'إغلاق'},
+  tplB:{en:'Template',ar:'قالب'}, impCsvB:{en:'Import CSV',ar:'استيراد CSV'},
+  impDone:{en:'{n} imported · {k} skipped',ar:'استُورد {n} · تجاوز {k}'},
+  rowN:{en:'Row {i}',ar:'صف {i}'},
+  rNoName:{en:'missing name',ar:'الاسم مفقود'},
+  rNoPool:{en:'unknown pool',ar:'فريق غير معروف'},
+  rBadType:{en:'unknown type',ar:'نوع غير معروف'},
+  noRows:{en:'No valid rows found',ar:'لا صفوف صالحة'},
+  solverErr:{en:'Solver error — data kept, plan paused',ar:'خطأ في الحل — البيانات محفوظة والخطة متوقفة'}
+};
+let LANG='en';
+const t=k=>{const e=T[k];return e?(e[LANG]||e.en):k};
+const tf=(k,v)=>t(k).replace(/\{(\w+)\}/g,(_,x)=>v[x]!==undefined?v[x]:x);
+const bi=(en,ar)=>({en,ar});
+const msgOf=m=>typeof m==='string'?m:(m?(m[LANG]||m.en):'');
+const ARW=()=>LANG==='ar'?'←':'→';
+const vWord=n=>t(n===1?'visit1':'visits');
+const dWord=n=>t(n===1?'wDay':'wDays');
+
+const $=s=>document.querySelector(s);
+const $$=s=>Array.from(document.querySelectorAll(s));
+const esc=x=>String(x==null?'':x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,9);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+const ic=(n,c='')=>'<svg class="ic '+c+'" aria-hidden="true"><use href="#'+n+'"/></svg>';
+const byId=(arr,id)=>arr.find(x=>x.id===id);
+function validImportData(o){
+  if(!o||!Array.isArray(o.people)||!Array.isArray(o.facilities))return 'Not a valid roster file';
+  for(const f of o.facilities){
+    if(!f||typeof f.id!=='string'||!f.id)return 'A facility is missing an id';
+    if(!['main','contracted','excluded'].includes(f.type))return 'Facility "'+(f.name||f.id)+'" has an unknown type';
+    if(typeof f.km!=='number'||f.km<0||f.km>999)return 'Facility "'+(f.name||f.id)+'" has an invalid distance';
+    if(typeof f.weight!=='number'||f.weight<0.5||f.weight>2)return 'Facility "'+(f.name||f.id)+'" has an invalid weight';
+  }
+  for(const p of o.people){
+    if(!p||typeof p.id!=='string'||!p.id)return 'A person is missing an id';
+    if(!['fin','clin'].includes(p.pool))return 'Person "'+(p.name||p.id)+'" has an unknown pool';
+    if(!['near','far','none'].includes(p.pref))return 'Person "'+(p.name||p.id)+'" has an unknown preference';
+    if(!Array.isArray(p.weekdays)||p.weekdays.length!==7)return 'Person "'+(p.name||p.id)+'" has an invalid weekdays array';
+    if(!Array.isArray(p.offDates))return 'Person "'+(p.name||p.id)+'" has an invalid off-dates list';
+    if(typeof p.weight!=='number'||p.weight<0.5||p.weight>2)return 'Person "'+(p.name||p.id)+'" has an invalid weight';
+  }
+  return null;
+}
+function validSettingsData(st){
+  if(!st||typeof st!=='object')return 'Not a valid settings file';
+  if(st.weekdayDefaults!==undefined&&(!Array.isArray(st.weekdayDefaults)||st.weekdayDefaults.length!==7))return 'weekdayDefaults must have 7 entries';
+  if(st.ratio!==undefined&&(typeof st.ratio.m!=='number'||typeof st.ratio.c!=='number'||st.ratio.m<1))return 'Invalid ratio';
+  if(st.seed!==undefined&&(typeof st.seed!=='number'||st.seed<1))return 'Invalid seed';
+  if(st.restarts!==undefined&&(typeof st.restarts!=='number'||st.restarts<1||st.restarts>64))return 'restarts must be between 1 and 64';
+  return null;
+}
+function costEdge(p,km,wP,wD){let c=0;
+  if(p.pref==='near')c+=wP*km/14; else if(p.pref==='far')c+=wP*Math.max(0,16-km)/14;
+  c+=wD*Math.abs((p.originKm||0)-km)/12; return c}
+function mulberry32(a){return function(){a|=0;a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296}}
+
+const DOWS={
+  en:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+  ar:['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت']
+};
+const MOS={
+  en:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+  ar:['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر']
+};
+function pISO(s){const p=s.split('-').map(Number);return new Date(p[0],p[1]-1,p[2])}
+function fISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function addISO(s,n){const d=pISO(s);d.setDate(d.getDate()+n);return fISO(d)}
+function dowOf(s){return pISO(s).getDay()}
+function fmtShort(iso,l){const d=pISO(iso);return DOWS[l][d.getDay()]+' '+d.getDate()+' '+MOS[l][d.getMonth()]}
+function fmtFull(iso,l){const d=pISO(iso);return DOWS[l][d.getDay()]+' · '+d.getDate()+' '+MOS[l][d.getMonth()]+' '+d.getFullYear()}
+const shortEn=iso=>fmtShort(iso,'en'), shortAr=iso=>fmtShort(iso,'ar');
+const humanEn=iso=>fmtFull(iso,'en'), humanAr=iso=>fmtFull(iso,'ar');
+const humanShort=iso=>fmtShort(iso,LANG), human=iso=>fmtFull(iso,LANG);
+
+const LS='mauveineRota.v1';
+function defaultSettings(){
+  return {
+    lang:'en',
+    weekdayDefaults:[
+      {on:true, visits:1, pref:'auto'},
+      {on:true, visits:1, pref:'auto'},
+      {on:true, visits:1, pref:'auto'},
+      {on:true, visits:1, pref:'auto'},
+      {on:true, visits:2, pref:'near'},
+      {on:false,visits:0, pref:'auto'},
+      {on:false,visits:0, pref:'auto'}
+    ],
+    staffing:{main:{fin:2,clin:2},contracted:{fin:1,clin:2}},
+    ratio:{m:3,c:1},
+    distinctPerDay:true, rotate:true,
+    noConsecutive:true, oneVisitPerDay:true,
+    relaxMode:'relaxed',
+    nearKm:10,
+    weights:{fairness:70,pref:50,distance:40,facility:60,person:30},
+    useW:{fairness:true,pref:true,distance:true,facility:true,person:true},
+    seed:20260907,
+    restarts:12,
+    autosave:true
+  };
+}
+function seedState(){
+  const F=(name,type,km)=>({id:uid(),name,type,km,weight:1,active:true});
+  const P=(name,pool,originKm,pref)=>({id:uid(),name,pool,originKm,pref,weight:1,
+    weekdays:[true,true,true,true,true,false,false],offDates:[],active:true});
+  return {
+    scope:{mode:'custom',start:'2026-09-07',end:'2026-09-10'},
+    dayOverrides:{},
+    facilities:[
+      F('هيئة التأمين الصحي','excluded',163),
+      F('المحافظة','excluded',0),
+      F('سنترال دمنهور','excluded',0),
+      F('لجان الانتخابات','excluded',0),
+      F('مبني العيادة التخصصية','excluded',0),
+      F('كفر الشيخ','excluded',57),
+      F('ادارة الفرع','main',0),
+      F('التوثيق والمعلومات','main',0),
+      F('الشئون الطبية','main',0),
+      F('الشئون القانونية','main',0),
+      F('المركبات','main',0),
+      F('الملحق','main',0),
+      F('دار الشفا ابو حمص','contracted',22),
+      F('مركز ابو حمص للاشعة','contracted',22),
+      F('مركز اشعة فيرست','contracted',27),
+      F('المستقبل للاشعة','contracted',0),
+      F('بحيرة سكان','contracted',0),
+      F('مركز دمنهور للاشعة','contracted',0),
+      F('مركز محمد عمرو','contracted',0),
+      F('مصطفي الاجهوري','contracted',0),
+      F('دلتا سكان','contracted',37),
+      F('كفر الدوار سكان','contracted',37),
+      F('كفر الدوار للاشعة','contracted',37),
+      F('مصر سكان','contracted',37),
+      F('العليمي سكان','contracted',45),
+      F('تسلا كوم حمادة','contracted',45),
+      F('نيوروهيلث','contracted',45),
+      F('ابو المطامير','main',38),
+      F('مدارس ابو المطامير','excluded',38),
+      F('مدرسة جانكليز','excluded',38),
+      F('ادكو طلاب','main',50),
+      F('ادكو قوي عاملة','main',50),
+      F('البيضا','main',18),
+      F('النوبارية','main',65),
+      F('قرية العشر آلاف فدان','excluded',65),
+      F('رشيد طلاب','main',66),
+      F('رشيد قوي عاملة','main',66),
+      F('ادارة المنطقة الاولي','main',37),
+      F('كفر الدوار طلاب','main',37),
+      F('كفر الدوار قوي عاملة','main',37),
+      F('كفر الدوار مسائي','main',37),
+      F('مستشفي كفر الدوار مسائي','main',37),
+      F('كفر الدوار طلاب صلاح سالم','main',37),
+      F('ابو حمص','main',22),
+      F('الرحمانية','main',40),
+      F('المحمودية','main',27),
+      F('المحمودية مسائي','main',27),
+      F('حوش عيسي طلاب','main',35),
+      F('حوش عيسي قوي عاملة','main',35),
+      F('مدارس حوش عيسي','excluded',35),
+      F('ادارة المنطقة الثانية','main',0),
+      F('الاجهزة التعويضية صلاح الدين','main',0),
+      F('الزراعة','main',0),
+      F('الشرطة','main',0),
+      F('العلاج الطبيعي','main',0),
+      F('اللجنة الطبية','main',0),
+      F('المخازن الطبية','main',0),
+      F('المخازن الغير طبية','main',0),
+      F('دمنهور الشاملة','main',0),
+      F('دمنهور طلاب','main',0),
+      F('دمنهور مسائي','main',0),
+      F('مديرية التربية والتعليم','main',0),
+      F('الدلنجات قوي عاملة','main',25),
+      F('الدلنجات مسائي','main',25),
+      F('الدلنجات طلاب','main',25),
+      F('ادارة المنطقة الثالثة','main',26),
+      F('ايتاي البارود','main',26),
+      F('ايتاي البارود طلاب','main',26),
+      F('ايتاي مسائي','main',26),
+      F('مستشفي ايتاي مسائي','main',26),
+      F('بدر','main',76),
+      F('علاج طبيعي','main',0),
+      F('شبراخيت طلاب','main',29),
+      F('شبراخيت قوي عاملة','main',29),
+      F('قليشان','main',25),
+      F('كوم حمادة طلاب','main',45),
+      F('كوم حمادة قوي عاملة','main',45),
+      F('كوم حمادة مسائي','main',45),
+      F('مستشفي كوم حمادة مسائي','main',45),
+      F('وادي النطرون','main',82),
+      F('الرقابة الادارية','excluded',0),
+      F('دار الحكمة ابو حمص','contracted',22),
+      F('حضانات الرعاية المتكاملة','contracted',25),
+      F('حضانات الصفوة بالدلنجات','contracted',25),
+      F('دار السلام للحضانات','contracted',25),
+      F('حضانات اجيال','contracted',35),
+      F('حضانات رعاية المرضي','contracted',35),
+      F('حضانات الدواء الشافي','contracted',0),
+      F('جمعية تنمية المجتمع بشرنوب','contracted',12),
+      F('الحياة للحضانات','contracted',37),
+      F('حضانات جنين','contracted',45),
+      F('سعادة الدارين','contracted',45),
+      F('ادفينا غسيل كلوي','contracted',70),
+      F('نور الايمان','contracted',50),
+      F('اصدقاء اليتيم للغسيل الكلوي','contracted',0),
+      F('مركز دار الكلي','contracted',0),
+      F('مركز دمنهور للكلي','contracted',0),
+      F('مركز رشيد للغسيل الكلوي','contracted',66),
+      F('جمعية الهدي كفر الدوار','contracted',37),
+      F('تنمية المجتمع واقد','contracted',45),
+      F('مستشفي بلال التخصصي','contracted',22),
+      F('مستشفي ادفينا المركزي','contracted',70),
+      F('مستشفي الفخراني','contracted',70),
+      F('مستشفي ادكو','contracted',50),
+      F('السعد خورشيد','contracted',64),
+      F('الصفوة اسكندرية','contracted',64),
+      F('بيجاد ذات العماد','contracted',64),
+      F('فوزي معاذ اسكندرية','contracted',64),
+      F('مستشفي دار الشفا بالدلنجات','contracted',25),
+      F('الصفوة الرحمانية','contracted',40),
+      F('جمعية الحمد الاسلامية','contracted',40),
+      F('مستشفي CIC','contracted',26),
+      F('مستشفي الرحمة نكلا العنب','contracted',26),
+      F('مستشفي ايتاي','contracted',26),
+      F('مستشفي دار الشروق','contracted',26),
+      F('مستشفي نور الرحمن','contracted',26),
+      F('ممستشفي الرسالة','contracted',76),
+      F('الزهراء الحديثة حوش عيسي','contracted',35),
+      F('مستشفي المدينة حوش عيسي','contracted',35),
+      F('السعد دمنهور','contracted',0),
+      F('المبرة دمنهور','contracted',0),
+      F('الهلال الاحمر','contracted',0),
+      F('دار الشفا دمنهور','contracted',0),
+      F('رواد الوادي','contracted',0),
+      F('مركز مصطفي النجار','contracted',0),
+      F('مستشفي الراعي الصالح','contracted',0),
+      F('مستشفي الفاروق','contracted',0),
+      F('مستشفي النور للعيون','contracted',0),
+      F('مستشفي النيل للقلب','contracted',0),
+      F('مستشفي دار الامومة','contracted',0),
+      F('مستشفي دار السلام','contracted',0),
+      F('مستشفي دار الطفل','contracted',0),
+      F('مستشفي دمنهور للعيون','contracted',0),
+      F('مستشفي رويال الشرق','contracted',0),
+      F('مستشفي كونكورد','contracted',0),
+      F('مستشفي ليدي كير','contracted',0),
+      F('يحيي راضي','contracted',0),
+      F('مستشفي باشا رشيد','contracted',66),
+      F('مستشفي نبض الحياة','contracted',66),
+      F('الصفوة للعيون كفر الدوار','contracted',37),
+      F('المبرة كفر الدوار','contracted',37),
+      F('مركز الجهاز الهضمي كفر الدوار','contracted',37),
+      F('مستشفي الاندلس','contracted',45),
+      F('مستشفي الحجاز','contracted',45),
+      F('معمل النجيلي','contracted',27),
+      F('معمل صالح','contracted',27),
+      F('معمل شريف نوح','contracted',35),
+      F('معمل البرج','contracted',0),
+      F('معمل الشمس','contracted',0),
+      F('معمل الفا','contracted',0),
+      F('معمل المختبر','contracted',0),
+      F('معمل بديوي','contracted',0),
+      F('معمل حساب','contracted',0),
+      F('معمل شلبي','contracted',0),
+      F('معمل مبرة العصافرة','contracted',0),
+      F('معمل مركز دار الكلي','contracted',0),
+      F('معمل سبيد','contracted',37),
+      F('نيابة ابو المطامير','excluded',38),
+      F('نيابة الرحمانية','excluded',40),
+      F('نيابة ايتاي','excluded',26),
+      F('نيابة دمنهور','excluded',0),
+      F('نيابة شبين الكوم','excluded',86),
+      F('نيابة كفر الدوار','excluded',37),
+      F('نيابة كوم حمادة','excluded',45)
+    ],
+    people:[
+      P('لبني','fin',5,'near'), P('اباظة','fin',12,'none'), P('شلتوت','fin',8,'near'),
+      P('اماني','fin',4,'none'), P('غادة','fin',10,'near'),
+      P('حمودين','clin',6,'near'), P('شوقي','clin',16,'far'), P('اسماء','clin',3,'none'),
+      P('مريم','clin',7,'near'), P('شرنوبي','clin',11,'none'), P('ميسرة','clin',9,'near')
+    ],
+    settings:defaultSettings()
+  };
+}
+let S=null, VIEW='plan', SELDAY=null, PLAN=null, regT=null, saveT=null, facFilter='all', pFilter='all', advOpen=false;
+
+let saveWarned=false;
+function save(){ if(!S.settings.autosave) return; try{localStorage.setItem(LS,JSON.stringify(S));saveWarned=false}catch(e){if(!saveWarned){saveWarned=true;toast(LANG==='ar'?'تعذّر الحفظ — تغييراتك لا تُخزَّن':'Could not save — your changes are not being stored','warn')}} }
+function saveSoon(){clearTimeout(saveT);saveT=setTimeout(save,350)}
+function load(){
+  try{
+    const raw=localStorage.getItem(LS);
+    if(raw){const o=JSON.parse(raw);
+      if(Array.isArray(o.facilities)&&Array.isArray(o.people)&&o.settings){
+        o.settings=Object.assign(defaultSettings(),o.settings);
+        o.settings.useW=Object.assign(defaultSettings().useW,o.settings.useW||{});
+        o.settings.weights=Object.assign(defaultSettings().weights,o.settings.weights||{});
+        o.scope=o.scope||seedState().scope;
+        o.dayOverrides=o.dayOverrides||{};
+        return o;
+      }
+    }
+  }catch(e){}
+  return seedState();
+}
+
+function dayCfg(iso){
+  const base=S.settings.weekdayDefaults[dowOf(iso)];
+  const cfg={on:base.on,visits:base.visits,pref:base.pref};
+  const ov=S.dayOverrides[iso];
+  if(ov){if(ov.on!==undefined)cfg.on=ov.on; if(ov.visits!==undefined)cfg.visits=ov.visits; if(ov.pref)cfg.pref=ov.pref;}
+  return cfg;
+}
+function effRange(){
+  let r={mode:S.scope.mode,start:S.scope.start,end:S.scope.end};
+  if(r.mode==='week') r.end=addISO(r.start,6);
+  else if(r.mode==='month'){const d=pISO(r.start);r.start=fISO(new Date(d.getFullYear(),d.getMonth(),1));r.end=fISO(new Date(d.getFullYear(),d.getMonth()+1,0));}
+  else if(!r.end||r.end<r.start) r.end=r.start;
+  return r;
+}
+
+function canWork(p,iso){return p.weekdays[dowOf(iso)]&&!p.offDates.includes(iso)}
+
+function runOnce(seedNum){
+  const st=S.settings, flags=[], rnd=mulberry32(seedNum>>>0);
+  const {start,end}=effRange();
+  const days=[];
+  for(let iso=start;iso<=end;iso=addISO(iso,1)){
+    const cfg=dayCfg(iso);
+    if(cfg.on&&cfg.visits>0)days.push({iso,cfg,visits:[]});
+  }
+  const out={error:false,start,end,days,flags};
+  if(!days.length){out.error=true;out.score=1e9;
+    flags.push({t:'warn',msg:bi('No active days with visits in this scope — switch days on in the Plan tab.',
+      'لا أيام فعّالة في هذا النطاق — فعّل الأيام من تبويب الخطة.')});
+    return out;}
+  const slots=[];days.forEach(d=>{for(let i=0;i<d.cfg.visits;i++)slots.push({iso:d.iso,pref:d.cfg.pref})});
+  const V=slots.length;
+  const Fmain=S.facilities.filter(f=>f.active&&f.type==='main');
+  const Fcon=S.facilities.filter(f=>f.active&&f.type==='contracted');
+  if(!Fmain.length&&!Fcon.length){out.error=true;out.score=1e9;
+    flags.push({t:'error',msg:bi('No active facilities — add some in the Facilities tab.',
+      'لا مرافق مفعّلة — أضفها في تبويب المرافق.')});
+    return out;}
+  let conT=Math.min(Math.round(V*st.ratio.c/(st.ratio.m+st.ratio.c)),Math.max(0,V-st.ratio.m));
+  if(conT>0&&!Fcon.length){
+    flags.push({t:'warn',msg:bi('No active contracted facilities — '+conT+' contracted target(s) became main.',
+      'لا مرافق متعاقدة مفعّلة — تحوّلت أهداف التعاقد ('+conT+') إلى رئيسية.')});
+    conT=0;}
+  if(!Fmain.length&&conT<V){
+    flags.push({t:'warn',msg:bi('No active main facilities — everything scheduled as contracted.',
+      'لا مرافق رئيسية مفعّلة — جُدولت الزيارات كلها كتعاقد.')});
+    conT=V;}
+
+  const typeOf=Array(V).fill('main');
+  if(conT>0){
+    const pref={},vis={};days.forEach(d=>{pref[d.iso]=d.cfg.pref;vis[d.iso]=d.cfg.visits});
+    const avgC=avg(Fcon.map(f=>f.km)), avgM=Fmain.length?avg(Fmain.map(f=>f.km)):avgC;
+    const taken=[];
+    for(let j=0;j<conT;j++){
+      const ideal=(j+.5)*V/conT-.5;
+      let best=-1,bs=Infinity;
+      for(let i=0;i<V;i++){
+        if(taken.includes(i))continue;
+        const s=slots[i];let sc=Math.abs(i-ideal);
+        if(pref[s.iso]==='main')sc+=.9;
+        if(pref[s.iso]==='near'&&avgC<avgM)sc-=.9;
+        if(vis[s.iso]<2)sc+=.4;
+        if(taken.some(tk=>slots[tk].iso===s.iso))sc+=1.4;
+        sc+=rnd()*.12;
+        if(sc<bs){bs=sc;best=i}
+      }
+      if(best>=0){taken.push(best);typeOf[best]='contracted'}
+    }
+  }
+
+  const useCnt={};S.facilities.forEach(f=>useCnt[f.id]=0);
+  const wFac=st.useW.facility?st.weights.facility/50:0;
+  function pickFac(type,day){
+    let cands=type==='main'?Fmain:Fcon;
+    if(st.distinctPerDay){
+      const used=day.visits.map(v=>v.f&&v.f.id).filter(Boolean);
+      const c2=cands.filter(f=>!used.includes(f.id));
+      if(!c2.length){
+        if(cands.length){
+          flags.push({t:'warn',dyn:true,msg:bi(
+            'Not enough distinct '+(type==='main'?'main':'contracted')+' facilities — a repeat was allowed on '+shortEn(day.iso)+'.',
+            'لا مرافق '+(type==='main'?'رئيسية':'متعاقدة')+' مختلفة كافية — سُمح بالتكرار في '+shortAr(day.iso)+'.')});
+        } else return null;
+      } else cands=c2;
+    }
+    if(!cands.length)return null;
+    const near=day.cfg.pref==='near';
+    let best=cands[0],bs=-1e9;
+    for(const f of cands){
+      let sc=rnd()*.3;
+      if(st.rotate)sc-=useCnt[f.id]*.8;
+      sc+=(f.weight-1)*wFac;
+      if(near)sc+=f.km*.22;
+      if(near&&day.visits.length){const last=day.visits[day.visits.length-1].f;if(last)sc+=Math.abs(f.km-last.km)*.10;}
+      if(sc>bs){bs=sc;best=f}
+    }
+    useCnt[best.id]++;return best;
+  }
+  let si=0;
+  for(const d of days){
+    for(let k=0;k<d.cfg.visits;k++){
+      let type=typeOf[si++]||'main', f=pickFac(type,d);
+      if(!f){
+        const alt=type==='main'?(Fcon.length?'contracted':null):(Fmain.length?'main':null);
+        if(alt){f=pickFac(alt,d);if(f)type=alt;}
+      }
+      if(!f){
+        flags.push({t:'error',dyn:true,msg:bi(
+          'Open visit on '+humanEn(d.iso)+' — no facility of any type is available.',
+          'زيارة مفتوحة في '+humanAr(d.iso)+' — لا مرفق متاح من أي نوع.')});
+        d.visits.push({id:uid(),iso:d.iso,type:'main',f:null});continue;
+      }
+      d.visits.push({id:uid(),iso:d.iso,type,f});
+    }
+  }
+
+  if(st.noConsecutive){
+    for(let i=0;i<days.length-1;i++){
+      const a=days[i],b=days[i+1];
+      if(addISO(a.iso,1)!==b.iso)continue;
+      for(const key of ['fin','clin']){
+        const stf=v=>st.staffing[v.type][key];
+        const need=a.visits.reduce((s,v)=>s+stf(v),0)+b.visits.reduce((s,v)=>s+stf(v),0);
+        const pool=S.people.filter(p=>p.active&&p.pool===key);
+        const union=pool.filter(p=>canWork(p,a.iso)||canWork(p,b.iso)).length;
+        if(need>union)flags.push({t:'warn',kind:'pre',msg:bi(
+          (key==='fin'?'Financial':'Clinical')+' pool: '+need+' slots across '+shortEn(a.iso)+'–'+shortEn(b.iso)+' with only '+union+' people free either day — expect a bent rule or an open slot.',
+          'فريق '+(key==='fin'?'المالي':'الطبي')+': '+need+' خانة عبر '+shortAr(a.iso)+'–'+shortAr(b.iso)+' ولا يوجد سوى '+union+' فرد متاح — توقّع كسر قاعدة أو خانة مفتوحة.')});
+      }
+    }
+  }
+
+  let mmTot=0;
+  const res={};
+  for(const key of ['fin','clin']){
+    const r=assignPool(key,days,rnd);
+    res[key]=r;mmTot+=r.mm;
+    r.flags.forEach(f=>flags.push(f));
+  }
+  days.forEach(d=>d.visits.forEach(v=>{
+    v.fin=(res.fin.plan[d.iso]&&res.fin.plan[d.iso].get(v.id))||[];
+    v.clin=(res.clin.plan[d.iso]&&res.clin.plan[d.iso].get(v.id))||[];
+  }));
+  out.score=out.error?1e9:(flags.filter(f=>f.t==='error').length*1000+flags.filter(f=>f.dyn).length*20+mmTot);
+  return out;
+}
+
+function assignPool(key,days,rnd){
+  const st=S.settings;
+  const stf=v=>st.staffing[v.type][key];
+  const pool=S.people.filter(p=>p.active&&p.pool===key);
+  const plan={},work={},load={};
+  pool.forEach(p=>{work[p.id]=new Set();load[p.id]=0});
+  const wF=st.useW.fairness?st.weights.fairness/50:0;
+  const wP=st.useW.pref?st.weights.pref/50:0;
+  const wD=st.useW.distance?st.weights.distance/50:0;
+  const wW=st.useW.person?st.weights.person/50:0;
+  const flagsOut=[];
+  const dayKm=d=>{const ks=d.visits.filter(v=>v.f).map(v=>v.f.km);return ks.length?avg(ks):0};
+  const mmEdge=(p,km)=>costEdge(p,km,wP,wD);
+  if(!pool.length){
+    let any=false;
+    days.forEach(d=>{plan[d.iso]=new Map(d.visits.map(v=>[v.id,[]]));
+      if(d.visits.reduce((s,v)=>s+stf(v),0)>0)any=true;});
+    if(any)flagsOut.push({t:'error',dyn:true,msg:bi(
+      'No active people in the '+(key==='fin'?'financial':'clinical')+' pool — slots left open.',
+      'لا أفراد في الفريق '+(key==='fin'?'المالي':'الطبي')+' — الخانات بقيت مفتوحة.')});
+    return {plan,work,load,mm:0,flags:flagsOut};
+  }
+  const total=days.reduce((s,d)=>s+d.visits.reduce((a,v)=>a+stf(v),0),0);
+  const target=total/pool.length;
+  const chooseCost=(p,d)=>{let c=wF*2*((load[p.id]+1)/(target+1));c+=mmEdge(p,dayKm(d));c-=wW*(p.weight-1)*.6;c+=rnd()*.18;return c};
+
+  for(const d of days){
+    const need=d.visits.reduce((s,v)=>s+stf(v),0);
+    const assign=new Map(d.visits.map(v=>[v.id,[]]));
+    plan[d.iso]=assign;
+    if(!need)continue;
+    const fresh=pool.filter(p=>canWork(p,d.iso)&&!work[p.id].has(d.iso)&&!(st.noConsecutive&&work[p.id].has(addISO(d.iso,-1))));
+    const costed=fresh.map(p=>({p,c:chooseCost(p,d)})).sort((a,b)=>a.c-b.c);
+    let chosen=costed.slice(0,need).map(x=>x.p);
+    if(chosen.length<need&&st.relaxMode==='relaxed'&&st.noConsecutive){
+      const more=pool.filter(p=>canWork(p,d.iso)&&!work[p.id].has(d.iso)&&work[p.id].has(addISO(d.iso,-1)))
+        .map(p=>({p,c:chooseCost(p,d)})).sort((a,b)=>a.c-b.c);
+      while(chosen.length<need&&more.length){
+        const m=more.shift();chosen.push(m.p);
+        flagsOut.push({t:'warn',dyn:true,kind:'consec',msg:bi(
+          m.p.name+' worked back-to-back days around '+shortEn(d.iso)+' — rule bent to fill the day.',
+          m.p.name+' عمل يومين متتاليين قرب '+shortAr(d.iso)+' — كُسرت القاعدة لإكمال اليوم.')});
+      }
+    }
+    const edges=[];
+    d.visits.forEach(v=>{if(stf(v)>0){const km=v.f?v.f.km:8;chosen.forEach(p=>edges.push({vid:v.id,p,c:mmEdge(p,km)+rnd()*.08}))}});
+    edges.sort((a,b)=>a.c-b.c);
+    const rem={};d.visits.forEach(v=>rem[v.id]=stf(v));
+    const cnt={};chosen.forEach(p=>cnt[p.id]=0);
+    const maxPer=st.oneVisitPerDay?1:2;
+    for(const e of edges){if(rem[e.vid]>0&&cnt[e.p.id]<maxPer){assign.get(e.vid).push(e.p);rem[e.vid]--;cnt[e.p.id]++;}}
+    for(const v of d.visits){
+      for(const p of assign.get(v.id)){work[p.id].add(d.iso);load[p.id]++;}
+      const gap=stf(v)-assign.get(v.id).length;
+      if(gap>0)flagsOut.push({t:'error',dyn:true,msg:bi(
+        gap+' open '+(key==='fin'?'financial':'clinical')+' slot(s) at '+(v.f?v.f.name:'—')+' · '+humanEn(d.iso)+' — not enough available people.',
+        gap+' خانة '+(key==='fin'?'مالية':'طبية')+' مفتوحة في '+(v.f?v.f.name:'—')+' · '+humanAr(d.iso)+' — المتاحون لا يكفون.')});
+    }
+  }
+  polishPool(key,days,plan,work,load,pool,target,st);
+  let mm=0;
+  days.forEach(d=>d.visits.forEach(v=>plan[d.iso].get(v.id).forEach(p=>mm+=mmEdge(p,v.f?v.f.km:8))));
+  return {plan,work,load,mm,flags:flagsOut};
+}
+
+function polishPool(key,days,plan,work,load,pool,target,st){
+  const stf=v=>st.staffing[v.type][key];
+  const wP=st.useW.pref?st.weights.pref/50:0;
+  const wD=st.useW.distance?st.weights.distance/50:0;
+  const mm=(p,km)=>costEdge(p,km,wP,wD);
+  const entries=[];
+  days.forEach(d=>d.visits.forEach(v=>plan[d.iso].get(v.id).forEach(p=>entries.push({p,iso:d.iso,vid:v.id,km:v.f?v.f.km:8}))));
+  if(entries.length<2)return;
+  const okMove=(x,remove,add)=>{for(const w of work[x.id]){if(w===remove)continue;if(w===addISO(add,1)||w===addISO(add,-1))return false}return true};
+  const deadline=Date.now()+50;
+  let pass=0,did=true;
+  while(did&&pass<40&&Date.now()<deadline){
+    did=false;pass++;
+    for(let i=0;i<entries.length;i++)for(let j=i+1;j<entries.length;j++){
+      const a=entries[i],b=entries[j];
+      if(a.p.id===b.p.id||a.vid===b.vid)continue;
+      const gain=(mm(a.p,b.km)+mm(b.p,a.km))-(mm(a.p,a.km)+mm(b.p,b.km));
+      if(gain>=-1e-9)continue;
+      if(a.iso===b.iso){
+        const A=plan[a.iso].get(a.vid),B=plan[b.iso].get(b.vid);
+        A.splice(A.indexOf(a.p),1,b.p);B.splice(B.indexOf(b.p),1,a.p);
+        const tp=a.p;a.p=b.p;b.p=tp;did=true;continue;
+      }
+      if(!canWork(b.p,a.iso)||!canWork(a.p,b.iso))continue;
+      if(work[b.p.id].has(a.iso)||work[a.p.id].has(b.iso))continue;
+      if(st.noConsecutive&&(!okMove(a.p,a.iso,b.iso)||!okMove(b.p,b.iso,a.iso)))continue;
+      const A=plan[a.iso].get(a.vid),B=plan[b.iso].get(b.vid);
+      A.splice(A.indexOf(a.p),1,b.p);B.splice(B.indexOf(b.p),1,a.p);
+      work[a.p.id].delete(a.iso);work[a.p.id].add(b.iso);
+      work[b.p.id].delete(b.iso);work[b.p.id].add(a.iso);
+      const tp=a.p;a.p=b.p;b.p=tp;did=true;
+    }
+    for(const e of entries){
+      const y=e.p;
+      for(const x of pool){
+        if(work[x.id].has(e.iso)||!canWork(x,e.iso))continue;
+        if(st.noConsecutive&&!okMove(x,null,e.iso))continue;
+        const dF=((load[y.id]-1-target)**2+(load[x.id]+1-target)**2)-((load[y.id]-target)**2+(load[x.id]-target)**2);
+        const dM=mm(x,e.km)-mm(y,e.km);
+        if(dF+dM<-1e-9){
+          const arr=plan[e.iso].get(e.vid);arr.splice(arr.indexOf(y),1,x);
+          work[y.id].delete(e.iso);work[x.id].add(e.iso);
+          load[y.id]--;load[x.id]++;e.p=x;did=true;
+        }
+      }
+    }
+  }
+}
+
+function regenerate(){
+  const st=S.settings;
+  let best=null;
+  const n=clamp(st.restarts||1,1,64);
+  try{
+    for(let a=0;a<n;a++){
+      const r=runOnce((st.seed+a*7919)>>>0);
+      if(!best||r.score<best.score)best=r;
+      if(a>=1&&!best.flags.some(f=>f.t==='error'||f.dyn))break;
+    }
+    computeMetricsInto(best);
+  }catch(e){
+    best={error:true,start:S.scope.start,end:S.scope.end,days:[],
+      flags:[{t:'error',msg:bi('Solver error — data kept, plan paused.','خطأ في الحل — البيانات محفوظة والخطة متوقفة.')}],score:1e9};
+    computeMetricsInto(best);
+  }
+  PLAN=best;
+  return PLAN;
+}
+function gini(xs){const n=xs.length;if(!n)return 0;const s=xs.reduce((a,b)=>a+b,0);if(!s)return 0;let g=0;for(const a of xs)for(const b of xs)g+=Math.abs(a-b);return g/(2*n*n*s)}
+function computeMetricsInto(P){
+  const st=S.settings;
+  const visits=P.days.flatMap(d=>d.visits);
+  const V=visits.length, mainV=visits.filter(v=>v.type==='main').length, conV=V-mainV;
+  const loads={};S.people.forEach(p=>loads[p.id]=0);
+  visits.forEach(v=>[...v.fin,...v.clin].forEach(p=>{loads[p.id]=(loads[p.id]||0)+1}));
+  const poolStats={};
+  ['fin','clin'].forEach(k=>{
+    const ps=S.people.filter(p=>p.active&&p.pool===k);
+    const ls=ps.map(p=>loads[p.id]||0), tot=ls.reduce((a,b)=>a+b,0);
+    poolStats[k]={ps:ps.map(p=>({p,n:loads[p.id]||0})),tot,mean:ps.length?tot/ps.length:0,
+      gini:gini(ls),min:ls.length?Math.min(...ls):0,max:ls.length?Math.max(...ls):0};
+  });
+  const use={};S.facilities.forEach(f=>use[f.id]=0);
+  visits.forEach(v=>{if(v.f)use[v.f.id]++});
+  const unused=S.facilities.filter(f=>f.active&&f.type!=='excluded'&&!use[f.id]);
+  const totKm=visits.reduce((s,v)=>s+(v.f?v.f.km:0),0);
+  const dayRows=P.days.map(d=>({iso:d.iso,n:d.visits.length,pref:d.cfg.pref,
+    km:d.visits.reduce((s,v)=>s+(v.f?v.f.km:0),0),kms:d.visits.filter(v=>v.f).map(v=>v.f.km)}));
+  const nearChecks=dayRows.filter(r=>r.pref==='near'&&r.n>1)
+    .map(r=>({iso:r.iso,maxKm:Math.max(...r.kms),spread:Math.max(...r.kms)-Math.min(...r.kms)}));
+  nearChecks.forEach(r=>r.ok=r.maxKm<=st.nearKm&&r.spread<=Math.max(4,st.nearKm/2));
+  P.metrics={V,mainV,conV,loads,poolStats,use,unused,totKm,dayRows,nearChecks,
+    consec:P.flags.filter(f=>f.kind==='consec').length,
+    gaps:P.flags.filter(f=>f.t==='error').length,
+    workDays:P.days.length};
+}
+
+function setFill(el){const mn=+el.min||0,mx=+el.max||100,v=+el.value;el.style.setProperty('--fill',((v-mn)/(mx-mn)*100)+'%')}
+function weightSlider(val,attrs){
+  return '<input type="range" class="rng" min="0.5" max="2" step="0.1" value="'+val+'" '+attrs+' style="--fill:'+((val-0.5)/1.5*100)+'%">';
+}
+function stepper(act,k,v){
+  return '<div class="step"><button data-act="'+act+'" data-k="'+k+'" data-d="-1" aria-label="'+esc(t('less'))+'">'+ic('ic-minus')+'</button><span class="v">'+v+'</span><button data-act="'+act+'" data-k="'+k+'" data-d="1" aria-label="'+esc(t('more'))+'">'+ic('ic-plus')+'</button></div>';
+}
+
+function planCtlHTML(){
+  const {start,end}=effRange();
+  const list=[];for(let iso=start;iso<=end;iso=addISO(iso,1))list.push({iso,cfg:dayCfg(iso)});
+  if(!SELDAY||!list.some(d=>d.iso===SELDAY))SELDAY=(list.find(d=>d.cfg.on)||list[0]).iso;
+  const onCount=list.filter(d=>d.cfg.on&&d.cfg.visits>0).length;
+  const V=list.reduce((s,d)=>s+(d.cfg.on?d.cfg.visits:0),0);
+  const tiles=list.map(d=>{
+    const sel=d.iso===SELDAY,on=d.cfg.on;
+    const dots='<i></i>'.repeat(on?Math.min(d.cfg.visits,4):0);
+    const glyph=on&&d.cfg.pref==='near'?'<svg class="ic tpin"><use href="#ic-pin"/></svg>':(on&&d.cfg.pref==='main'?'<i class="sq"></i>':'');
+    return '<button class="tile '+(on?'':'off ')+(sel?'sel':'')+'" data-act="tile" data-iso="'+d.iso+'" title="'+esc(human(d.iso)+' · '+(on?d.cfg.visits+' '+vWord(d.cfg.visits):t('dayOff'))+(d.cfg.pref!=='auto'?' · '+(d.cfg.pref==='near'?t('favorsNear'):t('favorsMain')):''))+'">'
+      +'<span class="dw">'+DOWS[LANG][dowOf(d.iso)]+'</span><span class="dn">'+pISO(d.iso).getDate()+'</span>'
+      +'<span class="tdots">'+dots+glyph+'</span></button>';
+  }).join('');
+  const iso=SELDAY,cfg=dayCfg(iso),ov=S.dayOverrides[iso];
+  return '<div class="card">'
+    +'<div class="card-head"><div><div class="kicker">'+esc(t('kScope'))+'</div><h2 class="ctitle">'+esc(t('winTitle'))+'</h2></div>'
+    +'<div class="seg">'+['week','month','custom'].map(m=>'<button class="'+(S.scope.mode===m?'on':'')+'" data-act="scope" data-v="'+m+'">'+esc(t(m))+'</button>').join('')+'</div></div>'
+    +'<div class="scope-row">'
+    +'<label class="fld"><span>'+esc(t('start'))+'</span><input type="date" class="inp" id="scStart" value="'+S.scope.start+'"></label>'
+    +'<label class="fld" style="'+(S.scope.mode==='custom'?'':'display:none')+'"><span>'+esc(t('end'))+'</span><input type="date" class="inp" id="scEnd" value="'+(S.scope.end||S.scope.start)+'"></label>'
+    +'<div class="scope-meta">'+esc(human(start))+' '+ARW()+' '+esc(human(end))+' · <b>'+onCount+'</b> '+esc(dWord(onCount))+' · <b>'+V+'</b> '+esc(vWord(V))+'</div>'
+    +'</div>'
+    +'<div class="ribbon">'+tiles+'</div>'
+    +'<div class="day-edit">'
+    +'<div class="de-date"><b>'+DOWS[LANG][dowOf(iso)]+'</b><span>'+esc(human(iso))+'</span></div>'
+    +'<div class="de-ctl"><span class="lbl">'+esc(cfg.on?t('dayOn'):t('dayOff'))+'</span><button class="sw '+(cfg.on?'on':'')+'" data-act="day-on" data-iso="'+iso+'" aria-label="'+esc(t('toggleA'))+'"></button></div>'
+    +'<div class="de-ctl"><span class="lbl">'+esc(t('visitsLbl'))+'</span>'+stepper('day-step','iso:'+iso,cfg.visits)+'</div>'
+    +'<div class="de-ctl"><span class="lbl">'+esc(t('favor'))+'</span><div class="seg mini">'+['auto','main','near'].map(p=>'<button class="'+(cfg.pref===p?'on':'')+'" data-act="day-pref" data-iso="'+iso+'" data-v="'+p+'">'+esc(p==='auto'?t('auto'):(p==='main'?t('main'):t('near')))+'</button>').join('')+'</div></div>'
+    +(ov?'<button class="linkbtn" data-act="day-clear" data-iso="'+iso+'">'+ic('ic-x')+esc(t('resetDef'))+'</button>':'<span class="quiet tiny" style="margin:0">'+esc(tf('followsDef',{d:DOWS[LANG][dowOf(iso)]}))+'</span>')
+    +'</div>'
+    +'<div class="cta-row">'
+    +'<button class="btn primary" data-act="gen">'+ic('ic-wand')+esc(t('gen'))+'</button>'
+    +'<button class="btn" data-act="reroll">'+ic('ic-dice')+esc(t('reroll'))+'</button>'
+    +'<div class="grow"></div>'
+    +'<button class="btn ghost" data-act="export-plan">'+ic('ic-down')+esc(t('expPlan'))+'</button>'
+    +'<button class="btn ghost" data-act="print">'+ic('ic-print')+esc(t('print'))+'</button>'
+    +'</div>'
+    +'<p class="quiet">'+ic('ic-info')+esc(t('liveNote'))+'</p>'
+    +'</div>';
+}
+function pillH(p,pool){return '<span class="pill '+pool+'" data-p="'+p.id+'" dir="auto">'+esc(p.name)+'</span>'}
+function flagsHTML(flags){
+  if(!flags||!flags.length)return '';
+  const seen=new Set();
+  const uniq=flags.filter(f=>{const k=msgOf(f.msg);if(seen.has(k))return false;seen.add(k);return true});
+  return '<div class="flags">'+uniq.map(f=>'<div class="flag '+f.t+'">'+ic(f.t==='info'?'ic-info':'ic-alert')+'<span>'+esc(msgOf(f.msg))+'</span></div>').join('')+'</div>';
+}
+function resultHTML(anim){
+  if(!PLAN)return '';
+  if(PLAN.error)return '<div class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kSched'))+'</div><h2 class="ctitle">'+esc(t('nothing'))+'</h2></div></div>'+flagsHTML(PLAN.flags)+'</div>';
+  const m=PLAN.metrics;
+  const chips='<span class="chip">'+m.V+' '+esc(vWord(m.V))+'</span><span class="chip">'+m.mainV+' '+esc(t('mainPl'))+' · '+m.conV+' '+esc(t('conPl'))+'</span>'
+    +(m.gaps?'<span class="chip bad">'+m.gaps+' '+esc(t('openF'))+'</span>':'')
+    +(m.consec?'<span class="chip bend">'+m.consec+' '+esc(t('bentF'))+'</span>':'<span class="chip">'+esc(t('clean'))+'</span>');
+  const body=PLAN.days.map((d,di)=>{
+    const dkm=d.visits.reduce((s,v)=>s+(v.f?v.f.km:0),0);
+    const dd=pISO(d.iso);
+    return '<tbody class="dayg" style="--i:'+di+'">'
+      +'<tr class="dayhead"><td colspan="6"><span class="dh">'+DOWS[LANG][dd.getDay()]+' <b>'+dd.getDate()+' '+MOS[LANG][dd.getMonth()]+'</b></span>'
+      +'<span class="dhmeta">'+d.visits.length+' '+esc(vWord(d.visits.length))+'</span>'
+      +(d.cfg.pref!=='auto'?'<span class="dhmeta pref">'+ic('ic-pin','sp')+esc(d.cfg.pref==='near'?t('favorsNear'):t('favorsMain'))+'</span>':'')
+      +'<span class="dhmeta">'+dkm+' '+esc(t('km'))+'</span></td></tr>'
+      +d.visits.map((v,i)=>{
+        const expF=S.settings.staffing[v.type].fin,expC=S.settings.staffing[v.type].clin;
+        const openF=Math.max(0,expF-v.fin.length),openC=Math.max(0,expC-v.clin.length);
+        return '<tr><td class="vnum">'+(i+1)+'</td>'
+          +'<td class="fname" '+(v.f?'data-fac="'+v.f.id+'"':'')+' dir="auto">'+(v.f?esc(v.f.name):'<span class="openv">'+esc(t('openVisit'))+'</span>')+'</td>'
+          +'<td><span class="tag '+v.type+'">'+esc(v.type==='main'?t('main'):t('contr'))+'</span></td>'
+          +'<td class="km">'+(v.f?ic('ic-pin')+' '+v.f.km+' '+esc(t('km')):'–')+'</td>'
+          +'<td class="team">'+v.fin.map(p=>pillH(p,'fin')).join('')+'<span class="pill open">'+esc(t('open'))+'</span>'.repeat(openF)+'</td>'
+          +'<td class="team">'+v.clin.map(p=>pillH(p,'clin')).join('')+'<span class="pill open">'+esc(t('open'))+'</span>'.repeat(openC)+'</td></tr>';
+      }).join('')
+      +'</tbody>';
+  }).join('');
+  return '<div class="card">'
+    +'<div class="card-head"><div><div class="kicker">'+esc(t('kSched'))+'</div><h2 class="ctitle">'+esc(human(PLAN.start))+' '+ARW()+' '+esc(human(PLAN.end))+'</h2><div class="chiprow">'+chips+'</div></div></div>'
+    +flagsHTML(PLAN.flags)
+    +'<div class="tblwrap'+(anim?' anim':'')+'"><table class="sched"><thead><tr><th class="numth" style="width:34px">#</th><th>'+esc(t('facility'))+'</th><th>'+esc(t('type'))+'</th><th class="numth">'+esc(t('dist'))+'</th><th>'+esc(t('finTeam'))+'</th><th>'+esc(t('clinTeam'))+'</th></tr></thead>'+body+'</table></div>'
+    +'<p class="quiet">'+ic('ic-info')+esc(t('hoverNote'))+'</p>'
+    +'</div>';
+}
+function renderPlan(){$('#planCtl').innerHTML=planCtlHTML();$('#resultBox').innerHTML=resultHTML()}
+function renderPlanInto(){const c=$('#planCtl');if(c)c.innerHTML=planCtlHTML()}
+
+function facHTML(){
+  const st=S.settings;
+  const counts={main:0,contracted:0,excluded:0};
+  S.facilities.forEach(f=>{if(f.active)counts[f.type]++});
+  const shown=S.facilities.filter(f=>facFilter==='all'||f.type===facFilter);
+  const rows=shown.map(f=>'<tr>'
+    +'<td><input class="inp slim" dir="auto" value="'+esc(f.name)+'" placeholder="'+esc(t('phFac'))+'" data-fk="name" data-f="'+f.id+'"></td>'
+    +'<td><div class="seg mini">'+[['main',t('main')],['contracted',t('contr')],['excluded',t('excl')]].map(x=>'<button class="'+(f.type===x[0]?'on':'')+'" data-act="f-type" data-f="'+f.id+'" data-v="'+x[0]+'">'+esc(x[1])+'</button>').join('')+'</div></td>'
+    +'<td class="km"><span class="numwrap"><input type="number" class="inp slim mono" min="0" max="999" step="0.5" value="'+f.km+'" data-fk="km" data-f="'+f.id+'"><span class="unit">'+esc(t('km'))+'</span></span></td>'
+    +'<td class="wcell"><span class="ws">'+weightSlider(f.weight,'data-fk="weight" data-f="'+f.id+'"')+'</span><b class="wv">'+(+f.weight).toFixed(1)+'×</b></td>'
+    +'<td><button class="sw '+(f.active?'on':'')+'" data-act="f-act" data-f="'+f.id+'" aria-label="'+esc(t('toggleA'))+'"></button></td>'
+    +'<td class="td-del"><button class="ibtn" data-act="f-del" data-f="'+f.id+'" title="'+esc(t('remove'))+'">'+ic('ic-trash')+'</button></td>'
+    +'</tr>').join('');
+  return '<div class="card">'
+    +'<div class="card-head"><div><div class="kicker">'+esc(t('kLedger'))+'</div><h2 class="ctitle">'+esc(t('tabFac'))+'</h2></div>'
+    +'<div class="btnrow">'
+    +'<button class="btn ghost" data-act="tpl-f">'+ic('ic-down')+esc(t('tplB'))+'</button>'
+    +'<button class="btn ghost" data-act="f-csv">'+ic('ic-up')+esc(t('impCsvB'))+'</button>'
+    +'<button class="btn" data-act="f-add">'+ic('ic-plus')+esc(t('addFac'))+'</button>'
+    +'</div></div>'
+    +'<div class="chipline">'
+    +[['all',t('all')+' '+S.facilities.length],['main',counts.main+' '+t('mainPl')],['contracted',counts.contracted+' '+t('conPl')],['excluded',counts.excluded+' '+t('excPl')]]
+      .map(c=>'<button class="fchip '+(facFilter===c[0]?'on':'')+'" data-act="f-filter" data-v="'+c[0]+'">'+esc(c[1])+'</button>').join('')
+    +'<span class="chip">'+esc(t('target'))+' '+st.ratio.m+' : '+st.ratio.c+'</span></div>'
+    +'<div class="scrollx"><table><thead><tr><th>'+esc(t('facility'))+'</th><th>'+esc(t('type'))+'</th><th class="numth">'+esc(t('dist'))+'</th><th>'+esc(t('weight'))+'</th><th>'+esc(t('on'))+'</th><th></th></tr></thead>'
+    +'<tbody>'+(rows||'<tr><td colspan="6" class="empty">'+esc(t('noFac'))+'</td></tr>')+'</tbody></table></div>'
+    +'<p class="quiet">'+ic('ic-info')+esc(t('facNote'))+'</p>'
+    +'</div>';
+}
+
+function loadCellHTML(p){
+  if(!PLAN||PLAN.error)return '<span class="quiet">–</span>';
+  const n=PLAN.metrics.loads[p.id]||0;
+  const maxL=Math.max(1,...Object.values(PLAN.metrics.loads));
+  return '<div class="loadc"><b>'+n+'</b><div class="bar '+p.pool+'"><i style="width:'+(n/maxL*100)+'%"></i></div></div>';
+}
+function peopleHTML(){
+  const counts={fin:0,clin:0};S.people.forEach(p=>{if(p.active)counts[p.pool]++});
+  const shown=S.people.filter(p=>pFilter==='all'||p.pool===pFilter);
+  const WD=LANG==='ar'?['ح','ن','ث','ر','خ','ج','س']:['S','M','T','W','T','F','S'];
+  const rows=shown.map(p=>'<tr>'
+    +'<td><input class="inp slim" dir="auto" value="'+esc(p.name)+'" placeholder="'+esc(t('phName'))+'" data-pk="name" data-p="'+p.id+'"></td>'
+    +'<td><div class="seg mini">'+[['fin',t('finS')],['clin',t('clinS')]].map(x=>'<button class="'+(p.pool===x[0]?'on':'')+'" data-act="p-pool" data-p="'+p.id+'" data-v="'+x[0]+'">'+esc(x[1])+'</button>').join('')+'</div></td>'
+    +'<td class="km"><span class="numwrap"><input type="number" class="inp slim mono" min="0" max="200" step="0.5" value="'+p.originKm+'" data-pk="originKm" data-p="'+p.id+'"><span class="unit">'+esc(t('km'))+'</span></span></td>'
+    +'<td><div class="seg mini">'+[['near',t('near')],['far',t('far')],['none',t('noneP')]].map(x=>'<button class="'+(p.pref===x[0]?'on':'')+'" data-act="p-pref" data-p="'+p.id+'" data-v="'+x[0]+'">'+esc(x[1])+'</button>').join('')+'</div></td>'
+    +'<td><div class="wds">'+p.weekdays.map((on,i)=>'<button class="wd '+(on?'on':'')+'" data-act="p-wd" data-p="'+p.id+'" data-w="'+i+'" title="'+esc(DOWS[LANG][i])+'">'+WD[i]+'</button>').join('')+'</div></td>'
+    +'<td><div class="offs">'
+      +p.offDates.slice(0,2).map(dt=>'<span class="offchip">'+esc(humanShort(dt))+'<button data-act="p-off-del" data-p="'+p.id+'" data-date="'+dt+'" aria-label="'+esc(t('remove'))+'">'+ic('ic-x')+'</button></span>').join('')
+      +(p.offDates.length>2?'<span class="offchip" title="'+esc(p.offDates.join(', '))+'">+'+(p.offDates.length-2)+'</span>':'')
+      +'<input type="date" class="inp tinyp" data-poff="'+p.id+'" title="'+esc(t('addOff'))+'">'
+    +'</div></td>'
+    +'<td class="wcell"><span class="ws">'+weightSlider(p.weight,'data-pk="weight" data-p="'+p.id+'"')+'</span><b class="wv">'+(+p.weight).toFixed(1)+'×</b></td>'
+    +'<td id="load-'+p.id+'">'+loadCellHTML(p)+'</td>'
+    +'<td><button class="sw '+(p.active?'on':'')+'" data-act="p-act" data-p="'+p.id+'" aria-label="'+esc(t('toggleA'))+'"></button></td>'
+    +'<td class="td-del"><button class="ibtn" data-act="p-del" data-p="'+p.id+'" title="'+esc(t('remove'))+'">'+ic('ic-trash')+'</button></td>'
+    +'</tr>').join('');
+  return '<div class="card">'
+    +'<div class="card-head"><div><div class="kicker">'+esc(t('kPools'))+'</div><h2 class="ctitle">'+esc(t('peopleT'))+'</h2></div>'
+    +'<div class="btnrow">'
+    +'<button class="btn ghost" data-act="tpl-p">'+ic('ic-down')+esc(t('tplB'))+'</button>'
+    +'<button class="btn ghost" data-act="p-csv">'+ic('ic-up')+esc(t('impCsvB'))+'</button>'
+    +'<button class="btn" data-act="p-add">'+ic('ic-plus')+esc(t('addPerson'))+'</button>'
+    +'</div></div>'
+    +'<div class="chipline">'
+    +[['all',t('all')+' '+S.people.length],['fin',counts.fin+' '+t('finPl')],['clin',counts.clin+' '+t('clinPl')]]
+      .map(c=>'<button class="fchip '+(pFilter===c[0]?'on':'')+'" data-act="p-filter" data-v="'+c[0]+'">'+esc(c[1])+'</button>').join('')
+    +'</div>'
+    +'<div class="scrollx"><table><thead><tr><th>'+esc(t('person'))+'</th><th>'+esc(t('pool'))+'</th><th class="numth">'+esc(t('origin'))+'</th><th>'+esc(t('prefers'))+'</th><th>'+esc(t('weekdays'))+'</th><th>'+esc(t('offDays'))+'</th><th>'+esc(t('weight'))+'</th><th>'+esc(t('load'))+'</th><th>'+esc(t('on'))+'</th><th></th></tr></thead>'
+    +'<tbody>'+(rows||'<tr><td colspan="10" class="empty">'+esc(t('noPeople'))+'</td></tr>')+'</tbody></table></div>'
+    +'<p class="quiet">'+ic('ic-info')+esc(t('peopleNote'))+'</p>'
+    +'</div>';
+}
+
+function settingsHTML(){
+  const st=S.settings;
+  const W=[['fairness',t('wFair')],['pref',t('wPref')],['distance',t('wDist')],['facility',t('wFac')],['person',t('wPer')]];
+  return '<p class="quiet" style="margin:0 0 18px">'+ic('ic-info')+esc(t('setIntro'))+'</p>'
+  +'<div class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kRhythm'))+'</div><h2 class="ctitle">'+esc(t('defWeek'))+'</h2></div><span class="chip">'+esc(t('unless'))+'</span></div>'
+  +'<div class="wdgrid">'+st.weekdayDefaults.map((w,i)=>'<div class="wdcell '+(w.on?'':'off')+'">'
+    +'<div class="wdtop"><span class="wdname">'+DOWS[LANG][i]+'</span><button class="sw '+(w.on?'on':'')+'" data-act="wd-on" data-i="'+i+'" aria-label="'+esc(t('toggleA'))+'"></button></div>'
+    +stepper('wd-step',i,w.visits)
+    +'<div class="seg mini">'+['auto','main','near'].map(p=>'<button class="'+(w.pref===p?'on':'')+'" data-act="wd-pref" data-i="'+i+'" data-v="'+p+'">'+esc(p==='auto'?t('auto'):(p==='main'?t('main'):t('near')))+'</button>').join('')+'</div>'
+    +'</div>').join('')+'</div></div>'
+  +'<div class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kStaff'))+'</div><h2 class="ctitle">'+esc(t('perVisit'))+'</h2></div></div>'
+  +'<div class="staffrow"><span class="tag main">'+esc(t('main'))+'</span>'+stepper('st-step','main.fin',st.staffing.main.fin)+'<span class="slbl">'+esc(t('finWord'))+'</span>'+stepper('st-step','main.clin',st.staffing.main.clin)+'<span class="slbl">'+esc(t('clinWord'))+'</span></div>'
+  +'<div class="staffrow"><span class="tag con">'+esc(t('contr'))+'</span>'+stepper('st-step','contracted.fin',st.staffing.contracted.fin)+'<span class="slbl">'+esc(t('finWord'))+'</span>'+stepper('st-step','contracted.clin',st.staffing.contracted.clin)+'<span class="slbl">'+esc(t('clinWord'))+'</span></div>'
+  +'<p class="quiet">'+ic('ic-info')+esc(t('houseRule'))+'</p></div>'
+  +'<div class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kMix'))+'</div><h2 class="ctitle">'+esc(t('mixRot'))+'</h2></div></div>'
+  +'<div class="rowline"><span class="rlab">'+esc(t('ratio'))+'</span>'+stepper('ratio-step','m',st.ratio.m)+'<span class="slbl">'+esc(t('mainW'))+' :</span>'+stepper('ratio-step','c',st.ratio.c)+'<span class="slbl">'+esc(t('conW'))+'</span></div>'
+  +'<div class="rowline"><span class="rlab">'+esc(t('distinct'))+'</span><button class="sw '+(st.distinctPerDay?'on':'')+'" data-act="tog" data-k="distinctPerDay" aria-label="'+esc(t('toggleA'))+'"></button></div>'
+  +'<div class="rowline"><span class="rlab">'+esc(t('rotFair'))+'</span><button class="sw '+(st.rotate?'on':'')+'" data-act="tog" data-k="rotate" aria-label="'+esc(t('toggleA'))+'"></button></div></div>'
+  +'<div class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kRules'))+'</div><h2 class="ctitle">'+esc(t('hardC'))+'</h2></div></div>'
+  +'<div class="rowline"><span class="rlab">'+esc(t('noBack'))+'</span><button class="sw '+(st.noConsecutive?'on':'')+'" data-act="tog" data-k="noConsecutive" aria-label="'+esc(t('toggleA'))+'"></button></div>'
+  +'<div class="rowline"><span class="rlab">'+esc(t('oneVisit'))+'</span><button class="sw '+(st.oneVisitPerDay?'on':'')+'" data-act="tog" data-k="oneVisitPerDay" aria-label="'+esc(t('toggleA'))+'"></button></div>'
+  +'<div class="rowline"><span class="rlab">'+esc(t('whenFill'))+'</span><div class="seg">'+[['strict',t('strict')],['relaxed',t('bend')]].map(o=>'<button class="'+(st.relaxMode===o[0]?'on':'')+'" data-act="relax" data-v="'+o[0]+'">'+esc(o[1])+'</button>').join('')+'</div></div>'
+  +'<div class="rowline"><span class="rlab">'+esc(t('nearThr'))+'</span><span class="numwrap"><input type="number" class="inp slim mono" min="1" max="200" value="'+st.nearKm+'" data-sk="nearKm"><span class="unit">'+esc(t('kmZero'))+'</span></span></div></div>'
+  +'<div class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kSolver'))+'</div><h2 class="ctitle">'+esc(t('tuning'))+'</h2></div></div>'
+  +'<details class="adv" id="advW"'+(advOpen?' open':'')+'><summary>'+ic('ic-sliders')+esc(t('advW'))+'<span class="quiet tiny">'+esc(t('advHint'))+'</span>'+ic('ic-chev','chev')+'</summary>'
+  +'<div class="wtable">'+W.map(w=>'<div class="wrow">'
+    +'<button class="sw '+(st.useW[w[0]]?'on':'')+'" data-act="w-tog" data-k="'+w[0]+'" aria-label="'+esc(t('toggleA'))+'"></button>'
+    +'<span class="wlab">'+esc(w[1])+'</span>'
+    +'<input type="range" class="rng" min="0" max="100" step="5" value="'+st.weights[w[0]]+'" data-wi="'+w[0]+'" style="--fill:'+st.weights[w[0]]+'%">'
+    +'<b class="wv">'+st.weights[w[0]]+'</b></div>').join('')+'</div>'
+  +'<button class="linkbtn" data-act="w-reset">'+ic('ic-dice')+esc(t('restoreW'))+'</button></details></div>'
+  +'<div class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kEng'))+'</div><h2 class="ctitle">'+esc(t('determ'))+'</h2></div></div>'
+  +'<div class="rowline"><span class="rlab">'+esc(t('seedL'))+'</span><span class="numwrap"><input type="number" class="inp slim mono" min="1" value="'+st.seed+'" data-sk="seed"><button class="ibtn" data-act="seed-reroll" title="'+esc(t('reroll'))+'">'+ic('ic-dice')+'</button></span></div>'
+  +'<div class="rowline"><span class="rlab">'+esc(t('restarts'))+'</span><span class="numwrap"><input type="number" class="inp slim mono" min="1" max="64" value="'+st.restarts+'" data-sk="restarts"></span></div>'
+  +'<div class="rowline"><span class="rlab">'+esc(t('autosave'))+'</span><button class="sw '+(st.autosave?'on':'')+'" data-act="tog" data-k="autosave" aria-label="'+esc(t('toggleA'))+'"></button></div>'
+  +'<p class="quiet">'+ic('ic-info')+esc(t('detNote'))+'</p></div>'
+  +'<div class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kData'))+'</div><h2 class="ctitle">'+esc(t('yourLedger'))+'</h2></div></div>'
+  +'<div class="rowline"><span class="rlab">'+esc(t('dataLbl'))+'</span><div class="btnrow">'
+  +'<button class="btn" data-act="exp-data">'+ic('ic-down')+esc(t('expDataB'))+'</button>'
+  +'<button class="btn" data-act="imp-data">'+ic('ic-up')+esc(t('impDataB'))+'</button></div></div>'
+  +'<div class="rowline"><span class="rlab">'+esc(t('setLbl'))+'</span><div class="btnrow">'
+  +'<button class="btn" data-act="exp-set">'+ic('ic-down')+esc(t('expDataB'))+'</button>'
+  +'<button class="btn" data-act="imp-set">'+ic('ic-up')+esc(t('impDataB'))+'</button></div></div>'
+  +'<div class="rowline"><span class="rlab">'+esc(t('resetLbl'))+'</span><div class="btnrow">'
+  +'<button class="btn" data-act="example">'+ic('ic-wand')+esc(t('example'))+'</button>'
+  +'<button class="btn" data-act="reset">'+ic('ic-trash')+esc(t('resetAll'))+'</button></div></div></div>';
+}
+
+function sumText(){
+  const m=PLAN.metrics,ar=LANG==='ar';
+  const L=[];
+  L.push(ar?'موفين روتا — خطة الزيارات':'MAUVEINE ROTA — VISIT PLAN');
+  L.push((ar?'الفترة: ':'Period: ')+human(PLAN.start)+' '+ARW()+' '+human(PLAN.end)+' ('+m.workDays+' '+dWord(m.workDays)+')');
+  L.push((ar?'الزيارات: ':'Visits: ')+m.V+' · '+m.mainV+' '+t('mainPl')+' / '+m.conV+' '+t('conPl')+' ('+(ar?'الهدف ':'target ')+S.settings.ratio.m+':'+S.settings.ratio.c+')');
+  ['fin','clin'].forEach(k=>{
+    const ps=m.poolStats[k];
+    const nm=k==='fin'?(ar?'الفريق المالي':'Financial'):(ar?'الفريق الطبي':'Clinical');
+    L.push(nm+' ('+ps.tot+' '+t('pDays')+(ar?'، متوسط ':' · mean ')+ps.mean.toFixed(1)+'): '+ps.ps.map(x=>x.p.name+' '+x.n).join(' · '));
+  });
+  L.push((ar?'إجمالي المسافة: ':'Total distance: ')+m.totKm+' '+t('km')+' · '+(ar?'مكسور: ':'bent: ')+m.consec+' · '+(ar?'مفتوح: ':'open: ')+m.gaps);
+  L.push((ar?'البذرة: ':'Seed: ')+S.settings.seed);
+  return L.join('\n');
+}
+function summaryHTML(){
+  if(!PLAN||PLAN.error)return '<div class="card empty-state"><svg class="ic bigic"><use href="#ic-chart"/></svg><h2 class="ctitle">'+esc(t('noSum'))+'</h2><p class="quiet" style="justify-content:center">'+esc(t('genFirst'))+'</p></div>';
+  const m=PLAN.metrics,st=S.settings;
+  const stat=(l,v)=>'<div class="stat"><span class="sl">'+l+'</span><span class="sv">'+v+'</span></div>';
+  const ratioDev=Math.abs(m.mainV/Math.max(1,m.V)-st.ratio.m/(st.ratio.m+st.ratio.c));
+  const checks=[
+    {ok:m.consec===0,lbl:esc(t('noBackL')),val:esc(st.noConsecutive?(m.consec?tf('nBent',{n:m.consec}):t('cleanNB')):t('ruleOff'))},
+    {ok:m.gaps===0,lbl:esc(t('fullStaff')),val:esc(m.gaps?tf('nOpenN',{n:m.gaps}):t('everySlot'))},
+    {ok:ratioDev<=.12,lbl:esc(t('mixL')),val:m.mainV+' : '+m.conV+' '+esc(t('achieved'))+' · '+st.ratio.m+' : '+st.ratio.c+' '+esc(t('targeted'))},
+    {ok:m.nearChecks.every(r=>r.ok),lbl:esc(t('nearL')),val:esc(m.nearChecks.length?m.nearChecks.map(r=>humanShort(r.iso)+' — '+t('maxW')+' '+r.maxKm+' '+t('km')+', '+t('spreadW')+' '+r.spread+' '+t('km')+(r.ok?'':' ('+t('overThr')+')')).join(' · '):t('noneScope'))},
+    {ok:!PLAN.flags.some(f=>f.kind==='pre'),lbl:esc(t('adjL')),val:esc(PLAN.flags.some(f=>f.kind==='pre')?t('tight'):t('poolsCover'))},
+    {ok:m.unused.length===0,lbl:esc(t('rotL')),val:esc(m.unused.length?tf('nUnused',{n:m.unused.length})+': '+m.unused.map(f=>esc(f.name)).join(' · '):t('allVisited'))}
+  ];
+  const facRows=S.facilities.filter(f=>m.use[f.id]).sort((a,b)=>m.use[b.id]-m.use[a.id]).map(f=>
+    '<tr><td class="fname sm" dir="auto">'+esc(f.name)+'</td><td><span class="tag '+f.type+'">'+esc(f.type==='main'?t('main'):t('contr'))+'</span></td>'
+    +'<td class="mono">'+m.use[f.id]+'</td><td class="km">'+f.km+' '+esc(t('km'))+'</td>'
+    +'<td class="bcell"><div class="bar fin"><i style="width:'+(m.use[f.id]/Math.max(1,m.V)*100)+'%"></i></div></td></tr>').join('');
+  return '<div class="card">'
+    +'<div class="card-head"><div><div class="kicker">'+esc(t('kSum'))+'</div><h2 class="ctitle">'+esc(human(PLAN.start))+' '+ARW()+' '+esc(human(PLAN.end))+'</h2></div>'
+    +'<button class="btn" data-act="sum-copy">'+ic('ic-copy')+esc(t('copyRpt'))+'</button></div>'
+    +'<div class="statgrid">'
+    +stat(esc(t('workDaysL')),m.workDays)+stat(esc(t('totVisits')),m.V)
+    +stat(esc(t('pDays')),m.poolStats.fin.tot+' '+esc(t('finS'))+' · '+m.poolStats.clin.tot+' '+esc(t('clinS')))
+    +stat(esc(t('totDist')),m.totKm+' '+esc(t('km'))+' · '+(m.V?(m.totKm/m.V).toFixed(1):'0')+' '+esc(t('avg')))
+    +stat(esc(t('fairG')),m.poolStats.fin.gini.toFixed(2)+' · '+m.poolStats.clin.gini.toFixed(2))
+    +stat(esc(t('bentOpen')),m.consec+' / '+m.gaps)
+    +stat(esc(t('seedL')),st.seed)+'</div></div>'
+  +'<div class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kChecks'))+'</div><h2 class="ctitle">'+esc(t('audit'))+'</h2></div></div>'
+  +'<div class="checks">'+checks.map(c=>'<div class="check '+(c.ok?'ok':'bad')+'">'+ic(c.ok?'ic-check':'ic-alert')+'<span class="clbl">'+c.lbl+'</span><span class="cval">'+c.val+'</span></div>').join('')+'</div></div>'
+  +'<div class="card"><div class="card-head"><div><div class="kicker">'+esc(t('fairK'))+'</div><h2 class="ctitle">'+esc(t('loadPer'))+'</h2></div></div>'
+  +['fin','clin'].map(k=>{const ps=m.poolStats[k];
+    return '<div class="poolblk"><div class="poolhead"><span class="tag '+(k==='fin'?'fin':'clin')+'">'+esc(k==='fin'?t('finTeam'):t('clinTeam'))+'</span><span class="quiet">'+ps.tot+' '+esc(t('pDays'))+' · '+esc(t('mean'))+' '+ps.mean.toFixed(1)+' · '+esc(t('gini'))+' '+ps.gini.toFixed(2)+' · '+esc(t('range'))+' '+ps.min+'–'+ps.max+'</span></div>'
+    +ps.ps.map(x=>'<div class="frow"><span class="fname sm" dir="auto">'+esc(x.p.name)+'</span><div class="bar '+k+'"><i style="width:'+(ps.max?x.n/ps.max*100:0)+'%"></i></div><b class="mono">'+x.n+'</b><span class="quiet tiny" style="margin:0">/ '+ps.mean.toFixed(1)+'</span></div>').join('')+'</div>';
+  }).join('')+'</div>'
+  +'<div class="card"><div class="card-head"><div><div class="kicker">'+esc(t('rotK'))+'</div><h2 class="ctitle">'+esc(t('facUse'))+'</h2></div></div>'
+  +'<div class="scrollx"><table><thead><tr><th>'+esc(t('facility'))+'</th><th>'+esc(t('type'))+'</th><th class="numth">'+esc(t('visitsLbl'))+'</th><th class="numth">'+esc(t('km'))+'</th><th>'+esc(t('share'))+'</th></tr></thead><tbody>'+facRows
+  +(m.unused.length?'<tr class="dimrow"><td colspan="5" class="quiet" style="border:0">'+esc(t('unusedAct'))+': '+m.unused.map(f=>esc(f.name)).join(' · ')+'</td></tr>':'')
+  +'</tbody></table></div></div>'
+  +'<div class="card"><div class="card-head"><div><div class="kicker">'+esc(t('dist'))+'</div><h2 class="ctitle">'+esc(t('dayLed'))+'</h2></div></div>'
+  +'<div class="scrollx"><table><thead><tr><th>'+esc(t('day'))+'</th><th class="numth">'+esc(t('visitsLbl'))+'</th><th class="numth">'+esc(t('dist'))+'</th><th>'+esc(t('favor'))+'</th></tr></thead><tbody>'
+  +m.dayRows.map(r=>'<tr><td>'+esc(humanShort(r.iso))+'</td><td class="mono">'+r.n+'</td><td class="km">'+r.km+' '+esc(t('km'))+'</td><td>'+(r.pref==='auto'?'<span class="quiet" style="margin:0">—</span>':esc(r.pref==='near'?t('near'):t('main')))+'</td></tr>').join('')
+  +'</tbody></table></div></div>'
+  +(PLAN.flags.length?'<div class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kNotes'))+'</div><h2 class="ctitle">'+esc(t('solverNotes'))+'</h2></div></div>'+flagsHTML(PLAN.flags)+'</div>':'');
+}
+
+function renderView(){
+  $$('.view').forEach(v=>v.classList.toggle('on',v.id==='view-'+VIEW));
+  $$('.tab').forEach(tb=>tb.classList.toggle('on',tb.dataset.view===VIEW));
+  if(VIEW==='plan')renderPlan();
+  else if(VIEW==='facilities')$('#view-facilities').innerHTML=facHTML();
+  else if(VIEW==='people')$('#view-people').innerHTML=peopleHTML();
+  else if(VIEW==='summary')$('#view-summary').innerHTML=summaryHTML();
+  else if(VIEW==='settings')$('#view-settings').innerHTML=settingsHTML();
+}
+function updateSeedChip(){const c=$('#seedChip');if(c)c.innerHTML=esc(t('seed'))+' <b>'+S.settings.seed+'</b> · '+esc(t('det'))}
+function syncMasthead(){
+  $('#taglineTxt').textContent=t('tagline');
+  $$('.langbtn').forEach(x=>x.classList.toggle('on',x.dataset.v===LANG));
+  $$('.tab .tablab').forEach(el=>el.textContent=t('tab'+el.dataset.tl));
+  $('#footHint').innerHTML=T.footHint[LANG]||T.footHint.en;
+  $('#footNote').textContent=t('footNote')+' · '+APPV;
+  updateSeedChip();
+}
+function applyLang(){
+  const rtl=LANG==='ar';
+  document.documentElement.dir=rtl?'rtl':'ltr';
+  document.documentElement.lang=LANG;
+  document.title=rtl?'موفين روتا — مخطّط الزيارات':'Mauvine Rota — Field Visit Planner';
+}
+function setLang(l){
+  if(l===LANG)return;
+  LANG=l;S.settings.lang=l;
+  applyLang();syncMasthead();
+  regenerate();renderView();refreshLoadCells();saveSoon();
+}
+function refreshLoadCells(){
+  if(VIEW!=='people')return;
+  S.people.forEach(p=>{const cell=document.getElementById('load-'+p.id);if(cell)cell.innerHTML=loadCellHTML(p)});
+}
+function regenNow(anim){
+  regenerate();
+  if(VIEW==='plan'&&$('#resultBox'))$('#resultBox').innerHTML=resultHTML(anim);
+  if(VIEW==='summary')$('#view-summary').innerHTML=summaryHTML();
+  refreshLoadCells();updateSeedChip();
+  if(anim){
+    const m=PLAN.metrics;
+    toast(PLAN.error?t('needsAttn'):t('planReady')+' · '+(m?m.V+' '+vWord(m.V):'')+(m&&m.gaps===0&&m.consec===0?' · '+t('allClean'):''));
+  }
+}
+function scheduleRegen(){clearTimeout(regT);regT=setTimeout(()=>regenNow(false),160)}
+
+function toast(msg,tone){
+  const tEl=document.createElement('div');
+  tEl.className='toast'+(tone?' '+tone:'');
+  tEl.innerHTML=ic(tone==='warn'?'ic-alert':'ic-check')+'<span>'+esc(msg)+'</span>';
+  $('#toasts').append(tEl);
+  setTimeout(()=>{tEl.classList.add('out');setTimeout(()=>tEl.remove(),350)},2800);
+}
+function twoStep(btn,fn){
+  if(btn.dataset.armed){fn();return;}
+  btn.dataset.armed='1';btn.dataset.label=btn.innerHTML;btn.classList.add('arm');btn.textContent=t('sure');
+  setTimeout(()=>{if(!btn.isConnected)return;delete btn.dataset.armed;btn.classList.remove('arm');btn.innerHTML=btn.dataset.label;},2600);
+}
+function setDay(iso,patch){
+  const c=dayCfg(iso);
+  const nv=Object.assign({on:c.on,visits:c.visits,pref:c.pref},patch);
+  if(nv.on===true&&nv.visits<1)nv.visits=1;
+  S.dayOverrides[iso]=nv;
+  renderPlanInto();scheduleRegen();saveSoon();
+}
+
+function download(name,text,mime){
+  const blob=new Blob([text],{type:mime});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  toast(t('downloaded'));
+}
+function copyText(txt,okMsg){
+  const done=()=>toast(okMsg||t('copied'));
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(done).catch(fb);}
+  else fb();
+  function fb(){const ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');done()}catch(e){toast(t('copyFail'),'warn')}ta.remove();}
+}
+function filePicker(accept,cb){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept=accept;inp.style.display='none';
+  document.body.appendChild(inp);
+  const cleanup=()=>{if(inp.parentNode)inp.remove()};
+  inp.addEventListener('change',()=>{const f=inp.files&&inp.files[0];cleanup();if(f)cb(f);});
+  inp.addEventListener('cancel',cleanup);
+  setTimeout(cleanup,120000);
+  inp.click();
+}
+function readFileText(file){
+  return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result||''));r.onerror=rej;r.readAsText(file)});
+}
+
+const normCell=h=>String(h==null?'':h).trim().toLowerCase().replace(/\s+/g,'');
+const ALIAS_P={
+  name:['name','الاسم','اسم'],
+  pool:['pool','team','فريق','الفريق'],
+  origin:['origin','origin_km','originkm','km','المقر','مقر'],
+  pref:['pref','prefers','التفضيل','تفضيل'],
+  weight:['weight','الوزن','وزن'],
+  weekdays:['weekdays','days','الأيام','أيام'],
+  offs:['off_dates','offdates','offs','off','الإجازات','إجازات'],
+  active:['active','on','مفعّل','مفعل']
+};
+const ALIAS_F={
+  name:['name','الاسم','اسم'],
+  type:['type','النوع','نوع'],
+  km:['km','distance','المسافة','مسافة'],
+  weight:['weight','الوزن','وزن'],
+  active:['active','on','مفعّل','مفعل']
+};
+function parseCSV(text){
+  text=String(text||'').replace(/^\uFEFF/,'');
+  const lines=text.split(/\r?\n/).filter(l=>l.trim()!=='');
+  const first=lines[0]||'';
+  const counts={',':(first.match(/,/g)||[]).length,';':(first.match(/;/g)||[]).length,'\t':(first.match(/\t/g)||[]).length};
+  let delim='\t';
+  if(counts[',']>=counts[';']&&counts[',']>=counts['\t'])delim=',';
+  else if(counts[';']>=counts['\t'])delim=';';
+  const rows=[];let row=[],cur='',q=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+    if(q){if(c==='"'){if(text[i+1]==='"'){cur+='"';i++;}else q=false;}else cur+=c;}
+    else if(c==='"')q=true;
+    else if(c===delim){row.push(cur);cur='';}
+    else if(c==='\n'){row.push(cur);rows.push(row);row=[];cur='';}
+    else if(c!=='\r')cur+=c;
+  }
+  if(cur!==''||row.length){row.push(cur);rows.push(row);}
+  return rows.filter(r=>r.length&&r.some(x=>String(x).trim()!==''));
+}
+function csvMap(rows,aliases){
+  const first=(rows[0]||[]).map(normCell);
+  const hasHeader=first.some(h=>Object.values(aliases).some(a=>a.includes(h)));
+  if(hasHeader){
+    const m={};
+    rows[0].forEach((h,i)=>{const k=normCell(h);
+      for(const f in aliases){if(aliases[f].includes(k)&&m[f]===undefined){m[f]=i;break;}}});
+    return {map:m,start:1};
+  }
+  const m={};Object.keys(aliases).forEach((f,i)=>m[f]=i);
+  return {map:m,start:0};
+}
+function parsePeopleCSV(rows){
+  const {map,start}=csvMap(rows,ALIAS_P);
+  const out=[],issues=[];
+  for(let i=start;i<rows.length;i++){
+    const r=rows[i];
+    const g=f=>{const ix=map[f];return ix!==undefined&&ix<r.length?String(r[ix]).trim():''};
+    const name=g('name');
+    if(!name){issues.push({i:i+1,k:'rNoName'});continue;}
+    const pr=g('pool').toLowerCase();
+    const pool=/fin|مالي|مالية/.test(pr)?'fin':(/clin|طبي|طبية/.test(pr)?'clin':'');
+    if(!pool){issues.push({i:i+1,k:'rNoPool'});continue;}
+    const pf=g('pref').toLowerCase();
+    const pref=/near|قريب/.test(pf)?'near':(/far|بعيد/.test(pf)?'far':'none');
+    const wRaw=g('weekdays').replace(/[^01]/g,'');
+    const weekdays=wRaw.length>=7?wRaw.slice(0,7).split('').map(x=>x==='1'):[true,true,true,true,true,false,false];
+    const offs=g('offs').split('|').map(x=>x.trim()).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x));
+    const act=g('active').toLowerCase();
+    out.push({id:uid(),name,pool,originKm:clamp(parseFloat(g('origin'))||0,0,999),
+      pref,weight:clamp(parseFloat(g('weight'))||1,0.5,2),weekdays,offDates:offs,
+      active:!/^(0|false|no|لا)$/.test(act)});
+  }
+  return {out,issues};
+}
+function parseFacilitiesCSV(rows){
+  const {map,start}=csvMap(rows,ALIAS_F);
+  const out=[],issues=[];
+  for(let i=start;i<rows.length;i++){
+    const r=rows[i];
+    const g=f=>{const ix=map[f];return ix!==undefined&&ix<r.length?String(r[ix]).trim():''};
+    const name=g('name');
+    if(!name){issues.push({i:i+1,k:'rNoName'});continue;}
+    const tr=g('type').toLowerCase();
+    const type=/main|رئيسي/.test(tr)?'main':(/con|متعاقد/.test(tr)?'contracted':(/excl|مستبعد/.test(tr)?'excluded':''));
+    if(!type){issues.push({i:i+1,k:'rBadType'});continue;}
+    const act=g('active').toLowerCase();
+    out.push({id:uid(),name,type,km:clamp(parseFloat(g('km'))||0,0,999),
+      weight:clamp(parseFloat(g('weight'))||1,0.5,2),
+      active:!/^(0|false|no|لا)$/.test(act)});
+  }
+  return {out,issues};
+}
+function applyTable(parsed,which){
+  const {out,issues}=parsed;
+  if(!out.length){toast(t('noRows'),'warn');return;}
+  if(which==='people'){S.people=out;pFilter='all';}
+  else{S.facilities=out;facFilter='all';}
+  SELDAY=null;
+  regenNow(false);renderView();saveSoon();
+  toast(tf('impDone',{n:out.length,k:issues.length}));
+  if(issues.length)toast(tf('rowN',{i:issues[0].i})+' — '+t(issues[0].k),'warn');
+}
+function peopleTpl(){
+  return 'name,pool,origin_km,pref,weight,weekdays,off_dates,active\r\n'
+    +'يوسف,fin,5,near,1,1111100,,1\r\n'
+    +'مريم,clin,7,none,1,1111100,2026-09-08,1\r\n';
+}
+function facilitiesTpl(){
+  return 'name,type,km,weight,active\r\n'
+    +'مستشفى النيل,main,12,1,1\r\n'
+    +'عيادة النخبة,contracted,7,1,1\r\n';
+}
+function exportData(){
+  download('mauveine-rota-data.json',JSON.stringify({
+    app:'mauveine-rota',type:'data',v:1,exported:new Date().toISOString(),
+    scope:S.scope,dayOverrides:S.dayOverrides,settings:S.settings,
+    facilities:S.facilities,people:S.people
+  },null,2),'application/json');
+}
+function exportSettings(){
+  download('mauveine-settings.json',JSON.stringify({
+    app:'mauveine-rota',type:'settings',v:1,settings:S.settings
+  },null,2),'application/json');
+}
+function importJSONText(txt){
+  let o;try{o=JSON.parse(txt)}catch(e){toast(t('invalid'),'warn');return;}
+  if(o&&Array.isArray(o.people)&&Array.isArray(o.facilities)){
+    const err=validImportData(o);
+    if(err){toast(t('invalid')+' — '+err,'warn');return;}
+    S=Object.assign(seedState(),o);
+    S.settings=Object.assign(defaultSettings(),o.settings||{});
+    S.settings.useW=Object.assign(defaultSettings().useW,S.settings.useW||{});
+    S.settings.weights=Object.assign(defaultSettings().weights,S.settings.weights||{});
+    S.dayOverrides=S.dayOverrides||{};
+    SELDAY=null;
+    LANG=(S.settings.lang==='ar')?'ar':'en';
+    applyLang();syncMasthead();
+    regenNow(false);renderView();saveSoon();toast(t('imported'));return;
+  }
+  const st=o&&o.settings?o.settings:(o&&Array.isArray(o.weekdayDefaults)?o:null);
+  if(st&&Array.isArray(st.weekdayDefaults)){
+    const serr=validSettingsData(st);
+    if(serr){toast(t('invalid')+' — '+serr,'warn');return;}
+    const lang=st.lang==='ar'?'ar':'en';
+    S.settings=Object.assign(defaultSettings(),st);
+    S.settings.useW=Object.assign(defaultSettings().useW,S.settings.useW||{});
+    S.settings.weights=Object.assign(defaultSettings().weights,S.settings.weights||{});
+    if(lang!==LANG){LANG=lang;applyLang();syncMasthead();}
+    regenNow(false);renderView();saveSoon();toast(t('setDone'));return;
+  }
+  toast(t('invalid'),'warn');
+}
+
+let MODAL=null, EXFMT='csv', HIDP=new Set(), HIDF=new Set();
+const EXPC={date:true,day:true,fac:true,type:true,km:true,fin:true,clin:true,fav:false};
+const EXT={csv:'csv',tsv:'tsv',md:'md',json:'json',txt:'txt'};
+function planRows(){
+  const rows=[];
+  if(!PLAN||PLAN.error)return rows;
+  PLAN.days.forEach(d=>d.visits.forEach(v=>{
+    const fh=v.f&&HIDF.has(v.f.id);
+    rows.push({date:d.iso,day:DOWS[LANG][dowOf(d.iso)],
+      fac:v.f?(fh?'—':v.f.name):t('openVisit'),
+      type:v.type,
+      km:v.f&&!fh?v.f.km:'',
+      fin:v.fin.filter(p=>!HIDP.has(p.id)).map(p=>p.name),
+      clin:v.clin.filter(p=>!HIDP.has(p.id)).map(p=>p.name),
+      fav:d.cfg.pref==='auto'?'':(d.cfg.pref==='near'?t('near'):t('main'))});
+  }));
+  return rows;
+}
+function exportCols(){
+  return [['date','csvDate'],['day','csvDay'],['fac','csvFac'],['type','csvType'],['km','csvKm'],['fin','csvFin'],['clin','csvClin'],['fav','csvFavor']].filter(c=>EXPC[c[0]]);
+}
+function tabCells(r){
+  return {date:r.date,day:r.day,fac:r.fac,
+    type:r.type==='main'?t('main'):t('contr'),
+    km:r.km===''?'':String(r.km),
+    fin:r.fin.join(' · '),clin:r.clin.join(' · '),fav:r.fav};
+}
+function buildExportText(fmt){
+  const rows=planRows(),cols=exportCols(),labels=cols.map(c=>t(c[1]));
+  if(fmt==='json'){
+    const arr=rows.map(r=>{const o={};
+      cols.forEach(c=>{const k=c[0];
+        if(k==='fac')o.facility=r.fac;
+        else if(k==='fin')o.financial=r.fin;
+        else if(k==='clin')o.clinical=r.clin;
+        else if(k==='km'){if(r.km!=='')o.km=r.km;}
+        else if(k==='fav'){if(r.fav)o.dayFavor=r.fav;}
+        else o[k]=r[k];
+      });return o;});
+    return JSON.stringify(arr,null,2);
+  }
+  const cellRows=rows.map(tabCells);
+  if(fmt==='csv'){
+    return [labels.join(',')].concat(cellRows.map(r=>cols.map(c=>'"'+String(r[c[0]]).replace(/"/g,'""')+'"').join(','))).join('\r\n');
+  }
+  if(fmt==='tsv'){
+    const clean=s=>String(s).replace(/[\t\n\r]/g,' ');
+    return [labels.join('\t')].concat(cellRows.map(r=>cols.map(c=>clean(r[c[0]])).join('\t'))).join('\n');
+  }
+  if(fmt==='md'){
+    const e=s=>String(s).replace(/\|/g,'\\|');
+    const lines=['| '+labels.map(e).join(' | ')+' |','|'+cols.map(()=>'---').join('|')+'|'];
+    cellRows.forEach(r=>lines.push('| '+cols.map(c=>e(r[c[0]])).join(' | ')+' |'));
+    return lines.join('\n');
+  }
+  const widths=labels.map((l,i)=>Math.min(30,Math.max(l.length,1,...cellRows.map(r=>String(r[cols[i][0]]).length))));
+  const pad=(s,w)=>{s=String(s);return s.length>=w?s:s+' '.repeat(w-s.length)};
+  const lines=[labels.map((l,i)=>pad(l,widths[i])).join('  ').replace(/\s+$/,'')];
+  cellRows.forEach(r=>lines.push(cols.map((c,i)=>pad(r[c[0]],widths[i])).join('  ').replace(/\s+$/,'')));
+  return lines.join('\n');
+}
+function exportModalHTML(){
+  const cols=[['date','csvDate'],['day','csvDay'],['fac','csvFac'],['type','csvType'],['km','csvKm'],['fin','csvFin'],['clin','csvClin'],['fav','csvFavor']];
+  const fmts=['csv','tsv','md','json','txt'];
+  return '<div class="modal">'
+    +'<div class="mhead"><div><div class="kicker">'+esc(t('kSched'))+'</div><h2 class="ctitle">'+esc(t('expTitle'))+'</h2></div>'
+    +'<button class="ibtn" data-act="exp-close" aria-label="'+esc(t('closeB'))+'">'+ic('ic-x')+'</button></div>'
+    +'<div class="msec"><div class="mlab">'+esc(t('fmtK'))+'</div><div class="seg">'
+    +fmts.map(f=>'<button class="'+(EXFMT===f?'on':'')+'" data-act="exp-fmt" data-v="'+f+'">'+f.toUpperCase()+'</button>').join('')
+    +'</div></div>'
+    +'<div class="msec"><div class="mlab">'+esc(t('colsK'))+'</div><div class="colgrid">'
+    +cols.map(c=>'<label class="colcell"><button class="sw '+(EXPC[c[0]]?'on':'')+'" data-act="exp-col" data-k="'+c[0]+'" aria-label="'+esc(t('toggleA'))+'"></button><span>'+esc(t(c[1]))+'</span></label>').join('')
+    +'</div></div>'
+    +'<div class="msec"><div class="mlab">'+esc(t('hideP'))+'</div><div class="chipwrap">'
+    +S.people.map(p=>'<button class="hchip" data-act="exp-hide" data-kind="p" data-id="'+p.id+'" dir="auto">'+esc(p.name)+'</button>').join('')
+    +'</div></div>'
+    +'<div class="msec"><div class="mlab">'+esc(t('hideF'))+'</div><div class="chipwrap">'
+    +S.facilities.map(f=>'<button class="hchip" data-act="exp-hide" data-kind="f" data-id="'+f.id+'" dir="auto">'+esc(f.name)+'</button>').join('')
+    +'</div></div>'
+    +'<div class="msec"><div class="mlab">'+esc(t('prevK'))+'</div><pre class="prev" id="expPrev" dir="ltr"></pre></div>'
+    +'<div class="mfoot">'
+    +'<button class="btn primary" data-act="exp-copy">'+ic('ic-copy')+esc(t('copyB'))+'</button>'
+    +'<button class="btn" data-act="exp-dl">'+ic('ic-down')+esc(t('dlB'))+'</button>'
+    +'<div class="grow"></div>'
+    +'<button class="btn ghost" data-act="exp-close">'+esc(t('closeB'))+'</button>'
+    +'</div></div>';
+}
+function openExport(){
+  if(!PLAN||PLAN.error){toast(t('noExp'),'warn');return;}
+  HIDP.clear();HIDF.clear();
+  MODAL=document.createElement('div');
+  MODAL.className='overlay';
+  MODAL.setAttribute('role','dialog');
+  MODAL.setAttribute('aria-modal','true');
+  MODAL.setAttribute('aria-label',t('expTitle'));
+  MODAL.innerHTML=exportModalHTML();
+  MODAL.addEventListener('click',e=>{if(e.target===MODAL)closeExport()});
+  document.body.appendChild(MODAL);
+  document.documentElement.classList.add('modal-open');
+  refreshPreview();
+  const cb=MODAL.querySelector('.ibtn');
+  if(cb)cb.focus();
+}
+function closeExport(){
+  if(!MODAL)return;
+  MODAL.remove();MODAL=null;
+  document.documentElement.classList.remove('modal-open');
+}
+function refreshPreview(){
+  if(!MODAL)return;
+  const pre=MODAL.querySelector('#expPrev');
+  if(!pre)return;
+  let txt=buildExportText(EXFMT);
+  const lines=txt.split('\n');
+  if(lines.length>60)txt=lines.slice(0,60).join('\n')+'\n… +'+(lines.length-60);
+  pre.textContent=txt;
+}
+
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-act]');if(!b)return;
+  const act=b.dataset.act;
+  switch(act){
+    case 'tab': if(VIEW!==b.dataset.view){VIEW=b.dataset.view;renderView();} break;
+    case 'lang': setLang(b.dataset.v); break;
+    case 'scope': S.scope.mode=b.dataset.v; renderView(); saveSoon(); break;
+    case 'tile': SELDAY=b.dataset.iso; renderPlanInto(); break;
+    case 'day-on': setDay(b.dataset.iso,{on:!(dayCfg(b.dataset.iso).on)}); break;
+    case 'day-step': {const iso=b.dataset.k.slice(4);const c=dayCfg(iso);setDay(iso,{visits:clamp(c.visits+(+b.dataset.d),0,6)});} break;
+    case 'day-pref': setDay(b.dataset.iso,{pref:b.dataset.v}); break;
+    case 'day-clear': delete S.dayOverrides[b.dataset.iso]; renderPlanInto(); scheduleRegen(); saveSoon(); break;
+    case 'gen': regenNow(true); break;
+    case 'reroll': case 'seed-reroll': S.settings.seed=Math.floor(Math.random()*900000)+100000; regenNow(true); saveSoon(); break;
+    case 'export-plan': openExport(); break;
+    case 'print': window.print(); break;
+    case 'exp-close': closeExport(); break;
+    case 'exp-fmt': {
+      EXFMT=b.dataset.v;
+      MODAL&&MODAL.querySelectorAll('[data-act="exp-fmt"]').forEach(x=>x.classList.toggle('on',x.dataset.v===EXFMT));
+      refreshPreview(); break;
+    }
+    case 'exp-col': {
+      const k=b.dataset.k;EXPC[k]=!EXPC[k];
+      b.classList.toggle('on',EXPC[k]);refreshPreview(); break;
+    }
+    case 'exp-hide': {
+      const set=b.dataset.kind==='p'?HIDP:HIDF;
+      if(set.has(b.dataset.id))set.delete(b.dataset.id);else set.add(b.dataset.id);
+      b.classList.toggle('off');refreshPreview(); break;
+    }
+    case 'exp-copy': copyText(buildExportText(EXFMT),t('copied')); break;
+    case 'exp-dl': {
+      let txt=buildExportText(EXFMT);
+      if(EXFMT==='csv'||EXFMT==='tsv')txt='\uFEFF'+txt;
+      const mime=EXFMT==='json'?'application/json':(EXFMT==='md'?'text/markdown':'text/plain');
+      download('visit-plan-'+PLAN.start+'_'+PLAN.end+'.'+EXT[EXFMT],txt,mime);break;
+    }
+    case 'f-filter': facFilter=b.dataset.v; renderView(); break;
+    case 'f-add': S.facilities.push({id:uid(),name:'',type:'main',km:10,weight:1,active:true}); renderView(); saveSoon(); scheduleRegen(); break;
+    case 'f-type': {const f=byId(S.facilities,b.dataset.f); if(f){f.type=b.dataset.v; renderView(); saveSoon(); scheduleRegen();}} break;
+    case 'f-act': {const f=byId(S.facilities,b.dataset.f); if(f){f.active=!f.active; renderView(); saveSoon(); scheduleRegen();}} break;
+    case 'f-del': twoStep(b,()=>{S.facilities=S.facilities.filter(x=>x.id!==b.dataset.f); renderView(); saveSoon(); scheduleRegen();}); break;
+    case 'tpl-f': download('facilities-template.csv','\uFEFF'+facilitiesTpl(),'text/csv;charset=utf-8'); break;
+    case 'f-csv': filePicker('.csv,text/csv',f=>readFileText(f).then(txt=>applyTable(parseFacilitiesCSV(parseCSV(txt)),'facilities')).catch(()=>toast(t('invalid'),'warn'))); break;
+    case 'p-filter': pFilter=b.dataset.v; renderView(); break;
+    case 'p-add': S.people.push({id:uid(),name:'',pool:pFilter==='clin'?'clin':'fin',originKm:5,pref:'none',weight:1,weekdays:[true,true,true,true,true,false,false],offDates:[],active:true}); renderView(); saveSoon(); scheduleRegen(); break;
+    case 'p-pool': {const p=byId(S.people,b.dataset.p); if(p){p.pool=b.dataset.v; renderView(); saveSoon(); scheduleRegen();}} break;
+    case 'p-pref': {const p=byId(S.people,b.dataset.p); if(p){p.pref=b.dataset.v; renderView(); saveSoon(); scheduleRegen();}} break;
+    case 'p-wd': {const p=byId(S.people,b.dataset.p); if(p){const i=+b.dataset.w; p.weekdays[i]=!p.weekdays[i]; renderView(); saveSoon(); scheduleRegen();}} break;
+    case 'p-off-del': {const p=byId(S.people,b.dataset.p); if(p){p.offDates=p.offDates.filter(d=>d!==b.dataset.date); renderView(); saveSoon(); scheduleRegen();}} break;
+    case 'p-act': {const p=byId(S.people,b.dataset.p); if(p){p.active=!p.active; renderView(); saveSoon(); scheduleRegen();}} break;
+    case 'p-del': twoStep(b,()=>{S.people=S.people.filter(x=>x.id!==b.dataset.p); renderView(); saveSoon(); scheduleRegen();}); break;
+    case 'tpl-p': download('people-template.csv','\uFEFF'+peopleTpl(),'text/csv;charset=utf-8'); break;
+    case 'p-csv': filePicker('.csv,text/csv',f=>readFileText(f).then(txt=>applyTable(parsePeopleCSV(parseCSV(txt)),'people')).catch(()=>toast(t('invalid'),'warn'))); break;
+    case 'wd-on': {const i=+b.dataset.i; S.settings.weekdayDefaults[i].on=!S.settings.weekdayDefaults[i].on; renderView(); saveSoon(); scheduleRegen();} break;
+    case 'wd-step': {const i=+b.dataset.k; const w=S.settings.weekdayDefaults[i]; w.visits=clamp(w.visits+(+b.dataset.d),0,6); renderView(); saveSoon(); scheduleRegen();} break;
+    case 'wd-pref': {const i=+b.dataset.i; S.settings.weekdayDefaults[i].pref=b.dataset.v; renderView(); saveSoon(); scheduleRegen();} break;
+    case 'st-step': {const cur=getPath('staffing.'+b.dataset.k); setPath('staffing.'+b.dataset.k,clamp(cur+(+b.dataset.d),0,4)); renderView(); saveSoon(); scheduleRegen();} break;
+    case 'ratio-step': {const k=b.dataset.k; S.settings.ratio[k]=clamp(S.settings.ratio[k]+(+b.dataset.d),k==='m'?1:0,9); renderView(); saveSoon(); scheduleRegen();} break;
+    case 'tog': {setPath(b.dataset.k,!getPath(b.dataset.k)); b.classList.toggle('on'); if(b.dataset.k==='autosave'&&getPath('autosave'))save(); saveSoon(); scheduleRegen();} break;
+    case 'relax': S.settings.relaxMode=b.dataset.v; renderView(); saveSoon(); scheduleRegen(); break;
+    case 'w-tog': {const k=b.dataset.k; S.settings.useW[k]=!S.settings.useW[k]; b.classList.toggle('on'); saveSoon(); scheduleRegen();} break;
+    case 'w-reset': S.settings.weights={fairness:70,pref:50,distance:40,facility:60,person:30}; renderView(); saveSoon(); scheduleRegen(); break;
+    case 'exp-data': exportData(); break;
+    case 'imp-data': filePicker('application/json,.json',f=>readFileText(f).then(importJSONText)); break;
+    case 'exp-set': exportSettings(); break;
+    case 'imp-set': filePicker('application/json,.json',f=>readFileText(f).then(importJSONText)); break;
+    case 'example': S=seedState(); S.settings.lang=LANG; facFilter='all'; pFilter='all'; SELDAY=null; VIEW='plan'; regenNow(false); renderView(); saveSoon(); toast(t('exampleDone')); break;
+    case 'reset': twoStep(b,()=>{localStorage.removeItem(LS); S=seedState(); S.settings.lang=LANG; facFilter='all'; pFilter='all'; SELDAY=null; regenNow(false); renderView(); saveSoon(); toast(t('resetDone'));}); break;
+    case 'sum-copy': {
+      if(!PLAN||PLAN.error){toast(t('noCopy'),'warn');return;}
+      copyText(sumText(),t('copied')); break;
+    }
+  }
+});
+function getPath(p){return p.split('.').reduce((a,k)=>a[k],S.settings)}
+function setPath(p,v){const ks=p.split('.');const last=ks.pop();ks.reduce((a,k)=>a[k],S.settings)[last]=v}
+
+document.addEventListener('input',e=>{
+  const el=e.target;if(!el)return;
+  if(el.dataset.fk){
+    const f=byId(S.facilities,el.dataset.f);if(!f)return;
+    if(el.dataset.fk==='name')f.name=el.value;
+    else if(el.dataset.fk==='km')f.km=clamp(parseFloat(el.value)||0,0,999);
+    else if(el.dataset.fk==='weight'){f.weight=parseFloat(el.value);setFill(el);const wv=el.closest('.wcell').querySelector('.wv');if(wv)wv.textContent=f.weight.toFixed(1)+'×';}
+    saveSoon();scheduleRegen();return;
+  }
+  if(el.dataset.pk){
+    const p=byId(S.people,el.dataset.p);if(!p)return;
+    if(el.dataset.pk==='name')p.name=el.value;
+    else if(el.dataset.pk==='originKm')p.originKm=clamp(parseFloat(el.value)||0,0,999);
+    else if(el.dataset.pk==='weight'){p.weight=parseFloat(el.value);setFill(el);const wv=el.closest('.wcell').querySelector('.wv');if(wv)wv.textContent=p.weight.toFixed(1)+'×';}
+    saveSoon();scheduleRegen();return;
+  }
+  if(el.dataset.wi){
+    S.settings.weights[el.dataset.wi]=+el.value;setFill(el);
+    const wv=el.closest('.wrow')&&el.closest('.wrow').querySelector('.wv');if(wv)wv.textContent=el.value;
+    saveSoon();scheduleRegen();return;
+  }
+  if(el.dataset.sk){
+    const k=el.dataset.sk;let v=parseInt(el.value,10);
+    if(isFinite(v)){if(k==='restarts')v=clamp(v,1,64);if(k==='nearKm')v=clamp(v,1,200);if(k==='seed')v=Math.max(1,v);S.settings[k]=v;}
+    saveSoon();scheduleRegen();return;
+  }
+});
+document.addEventListener('change',e=>{
+  const el=e.target;if(!el)return;
+  if(el.id==='scStart'||el.id==='scEnd'){
+    if(el.value){S.scope[el.id==='scStart'?'start':'end']=el.value;
+      if(S.scope.end<S.scope.start&&el.id==='scStart'){S.scope.end=el.value;if($('#scEnd'))$('#scEnd').value=el.value;}}
+    SELDAY=null;renderPlan();scheduleRegen();saveSoon();return;
+  }
+  if(el.dataset.poff){
+    const p=byId(S.people,el.dataset.poff);
+    if(p&&el.value&&!p.offDates.includes(el.value)){p.offDates.push(el.value);p.offDates.sort();renderView();saveSoon();scheduleRegen();}
+    return;
+  }
+});
+document.addEventListener('toggle',e=>{if(e.target&&e.target.id==='advW')advOpen=e.target.open},true);
+
+document.addEventListener('mouseover',e=>{
+  const pill=e.target.closest('.pill[data-p]');
+  if(pill){$$('.pill[data-p="'+pill.dataset.p+'"]').forEach(x=>x.classList.add('hl'));return;}
+  const fac=e.target.closest('td[data-fac]');
+  if(fac){$$('td[data-fac="'+fac.dataset.fac+'"]').forEach(x=>x.classList.add('hl'));}
+});
+document.addEventListener('mouseout',e=>{
+  const pill=e.target.closest('.pill[data-p]');
+  if(pill){$$('.pill[data-p="'+pill.dataset.p+'"]').forEach(x=>x.classList.remove('hl'));return;}
+  const fac=e.target.closest('td[data-fac]');
+  if(fac){$$('td[data-fac="'+fac.dataset.fac+'"]').forEach(x=>x.classList.remove('hl'));}
+});
+
+document.addEventListener('keydown',e=>{
+  if(MODAL){if(e.key==='Escape')closeExport();return;}
+  if(e.target.matches('input,textarea,select,button')||e.metaKey||e.ctrlKey||e.altKey)return;
+  const k=e.key.toLowerCase();
+  if(k>='1'&&k<='5'){VIEW=['plan','facilities','people','summary','settings'][+k-1];renderView();}
+  else if(k==='g'){regenNow(true);}
+  else if(k==='r'){S.settings.seed=Math.floor(Math.random()*900000)+100000;regenNow(true);saveSoon();}
+  else if(k==='e'){openExport();}
+});
+
+S=load();
+LANG=(S.settings.lang==='ar')?'ar':'en';
+applyLang();
+facFilter='all';pFilter='all';
+window.addEventListener('beforeprint',()=>{regenerate();renderPlan();});
+regenerate();
+renderView();
+syncMasthead();
+</script>
+</body>
+</html>
