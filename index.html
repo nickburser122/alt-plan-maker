@@ -3,17 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Mauvine Planner — bilingual, deterministic, general-purpose rotation planner for teams visiting sites. Offline, single file of truth, runs in your browser.">
-<title>Mauvine Planner — Rotation Planner</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9' fill='%236D4461'/%3E%3C/svg%3E">
+<meta name="description" content="Cadence — bilingual, deterministic field-rotation planner: goals, locations, rank-to-criticality matching and work/rest patterns. Runs in your browser.">
+<title>Cadence — Field Rotation Planner</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='20' height='20' rx='6' fill='%231F5F5B'/%3E%3Cpath d='M6 15l3-5 3 3 3-6 3 8' stroke='%23F2C46D' stroke-width='2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;1,9..144,500&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
-  <symbol id="ic-mark" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.1" fill="currentColor"/><g fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 2.7v3.6M12 17.7v3.6M2.7 12h3.6M17.7 12h3.6M5.4 5.4l2.5 2.5M16.1 16.1l2.5 2.5M18.6 5.4l-2.5 2.5M7.9 16.1l-2.5 2.5"/></g></symbol>
+  <symbol id="ic-mark" viewBox="0 0 24 24"><path d="M3.5 16l4-7 4 4.5 4-8.5 5 11" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.5" cy="5" r="1.9" fill="var(--accent,#F2C46D)"/></symbol>
+  <symbol id="ic-sigma" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 5.5h-11l6 6.5-6 6.5h11"/></symbol>
+  <symbol id="ic-target" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></symbol>
   <symbol id="ic-cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8.5 3v4M15.5 3v4"/></symbol>
   <symbol id="ic-build" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="3.5" width="15" height="17" rx="2.5"/><path d="M8 12.5h2M14 12.5h2M8 16h2M14 16h2M4.5 9h15M12 9v11.5"/></symbol>
   <symbol id="ic-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.2" r="3.4"/><path d="M3.2 19.5c.5-3.2 2.8-5.1 5.8-5.1s5.3 1.9 5.8 5.1"/><circle cx="17" cy="9.2" r="2.7"/><path d="M15.9 14.4c2.5.4 4.3 2.3 4.7 4.9"/></symbol>
@@ -56,7 +58,7 @@
   <div class="brand">
     <div class="mark"><svg viewBox="0 0 24 24"><use href="#ic-mark"/></svg></div>
     <div>
-      <h1 id="appName">Mauvine Planner</h1>
+      <h1 id="appName">Cadence</h1>
       <div class="tagline" id="tagline"></div>
     </div>
   </div>
@@ -70,6 +72,7 @@
   <section id="view-sites" class="view" aria-label="Sites"></section>
   <section id="view-people" class="view" aria-label="People"></section>
   <section id="view-rules" class="view" aria-label="Rules"></section>
+  <section id="view-model" class="view" aria-label="Model"></section>
   <section id="view-insights" class="view" aria-label="Insights"></section>
   <section id="view-workspace" class="view" aria-label="Workspace"></section>
 </main>
