@@ -40,7 +40,8 @@ function refreshChrome(){
   $('#tabs').innerHTML=V.tabs();
   const st=$('#status');if(st)st.innerHTML=V.statusHTML();
 }
-const VIEWFN={plan:'planView',sites:'sitesView',people:'peopleView',rules:'rulesView',insights:'insightsView',workspace:'workspaceView'};
+const VIEWFN={plan:'planView',sites:'sitesView',people:'peopleView',rules:'rulesView',model:'modelView',insights:'insightsView',workspace:'workspaceView'};
+const VIEWS_ORDER=['plan','sites','people','rules','model','insights','workspace'];
 function render(){
   pendingRender=false;
   I.setTerms(APP.ws.terms);
@@ -52,6 +53,7 @@ function render(){
   const host=$('#view-'+APP.view);
   const sy=window.scrollY;
   let html;
+  if(!modal)V.DD.clear();
   try{html=V[VIEWFN[APP.view]]()}catch(e){console.error(e);html='<section class="card"><p>'+esc(String(e&&e.message||e))+'</p></section>'}
   host.innerHTML=html;
   window.scrollTo(0,sy);
@@ -150,7 +152,32 @@ function reroll(){
   solve({});
 }
 
-function closePop(){if(pop){pop.remove();pop=null}$$('.dpk-trigger.open').forEach(b=>b.classList.remove('open'));dpkState=null;colorTarget=null}
+function closePop(){if(pop){pop.remove();pop=null}$$('.dpk-trigger.open,.dd.open').forEach(b=>b.classList.remove('open'));dpkState=null;colorTarget=null;ddState=null}
+let ddState=null;
+function openDD(btn){
+  const id=btn.dataset.dd;
+  if(pop&&ddState&&ddState.btn===btn){closePop();return}
+  const st=V.DD.get(id);if(!st)return;
+  openPop(btn,V.ddPop(id,''),'ddpop');
+  pop.style.minWidth=Math.max(btn.offsetWidth,180)+'px';place(pop,btn);
+  ddState={id,btn,sel:-1};btn.classList.add('open');
+  const q=pop.querySelector('#ddQ');
+  if(q){q.focus();q.addEventListener('input',()=>{pop.querySelector('.ddlist').outerHTML=V.ddPop(id,q.value).replace(/^[\s\S]*?(<div class="ddlist")/,'$1');ddState.sel=-1});
+    q.addEventListener('keydown',ddKeys)}
+  else{const on=pop.querySelector('.ddopt.on')||pop.querySelector('.ddopt');on&&on.focus()}
+  const on=pop.querySelector('.ddopt.on');if(on)on.scrollIntoView({block:'nearest'});
+}
+function ddKeys(e){
+  if(!pop||!ddState)return;
+  const opts=Array.from(pop.querySelectorAll('.ddopt'));if(!opts.length)return;
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();const cur=opts.indexOf(document.activeElement);const n=cur<0?(e.key==='ArrowDown'?0:opts.length-1):(cur+(e.key==='ArrowDown'?1:-1)+opts.length)%opts.length;opts[n].focus()}
+  else if(e.key==='Enter'&&e.target.id==='ddQ'){e.preventDefault();opts[0].click()}
+}
+function ddPick(i){
+  const s=ddState;if(!s)return;const st=V.DD.get(s.id);if(!st)return;
+  const opt=st.opts[i];const btn=s.btn;closePop();if(!opt)return;
+  applyBind(btn.dataset.bind,btn.dataset,String(opt[0]));
+}
 function openPop(anchor,html,cls){
   closePop();
   pop=document.createElement('div');pop.className=cls||'pop';pop.innerHTML=html;document.body.appendChild(pop);
@@ -271,9 +298,14 @@ function boolish(x,d){const s=String(x==null?'':x).trim().toLowerCase();if(!s)re
 function importCSV(kind,text){
   const rows=M.csvParse(text);if(!rows.length){toast(t('invalid',{e:'empty'}),'warn');return}
   const hdr=rows[0].map(h=>h.trim().toLowerCase());
-  const hasH=hdr.includes('name');
-  const keys=kind==='sites'?['name','category','km','zone','weight','min','max','days','blackout','active']:['name','roles','home','pref','weight','days','off','max','max_week','active'];
-  const alias={distance:'km',mi:'km',miles:'km',cat:'category',type:'category',role:'roles',pool:'roles',origin_km:'home',origin:'home',off_dates:'off',weekdays:'days',max_total:'max',maxweek:'max_week'};
+  const hasH=hdr.includes('name')||hdr.includes('location');
+  if(kind==='locations'){
+    const ni=hasH?Math.max(hdr.indexOf('name'),hdr.indexOf('location')):0,ki=hasH?hdr.findIndex(h=>/km|dist|mi/.test(h)):1;
+    let n=0;commit(ws=>{(hasH?rows.slice(1):rows).forEach(r=>{const nm=(r[ni]||'').trim();if(!nm)return;const km=Math.max(0,M.num(r[ki<0?1:ki],0));const ex=ws.locations.find(l=>l.name===nm);if(ex){ex.km=km;ex.unknown=false}else ws.locations.push(M.mkLoc(nm,km));n++});M.syncLoc(ws)});
+    toast(t('impDone',{n,k:0}));return;
+  }
+  const keys=kind==='sites'?['name','category','location','km','crit','tag','zone','weight','min','max','days','blackout','active']:['name','roles','rank','home','pref','weight','days','off','max','max_week','active'];
+  const alias={distance:'km',mi:'km',miles:'km',cat:'category',type:'category',role:'roles',pool:'roles',origin_km:'home',origin:'home',off_dates:'off',weekdays:'days',max_total:'max',maxweek:'max_week',criticality:'crit',loc:'location',kind:'tag'};
   const idx={};
   if(hasH)hdr.forEach((h,i)=>{const k=alias[h]||h;if(keys.includes(k)&&idx[k]===undefined)idx[k]=i});else keys.forEach((k,i)=>idx[k]=i);
   const body=hasH?rows.slice(1):rows;
@@ -285,30 +317,34 @@ function importCSV(kind,text){
       if(kind==='sites'){
         const cn=get(r,'category');let cat=cn?ws.categories.find(c=>c.name.toLowerCase()===cn.toLowerCase()):ws.categories[0];
         if(!cat){const st={};ws.roles.forEach((ro,i)=>st[ro.id]=i===0?1:0);cat=M.mkCat(cn||'Imported',M.COLORS[ws.categories.length%M.COLORS.length],st,1);ws.categories.push(cat)}
-        const mn=get(r,'min'),mx=get(r,'max');
-        ws.sites.push(M.mkSite(name,cat.id,Math.max(0,M.num(get(r,'km'),0)),{zone:get(r,'zone'),weight:clamp(M.num(get(r,'weight'),1),.5,2),minV:mn===''?'':Math.max(0,M.intOr(mn,0)),maxV:mx===''?'':Math.max(0,M.intOr(mx,0)),days:parseDays(get(r,'days'),[true,true,true,true,true,true,true]),blackout:parseDates(get(r,'blackout')),active:boolish(get(r,'active'),true)}));
+        const mn=get(r,'min'),mx=get(r,'max');const ln=get(r,'location');let loc='';
+        if(ln){let l=ws.locations.find(x=>x.name===ln);if(!l){l=M.mkLoc(ln,M.num(get(r,'km'),0));ws.locations.push(l)}loc=l.id}
+        ws.sites.push(M.mkSite(name,cat.id,Math.max(0,M.num(get(r,'km'),0)),{loc,crit:clamp(M.num(get(r,'crit'),50),0,100),tag:get(r,'tag'),zone:get(r,'zone'),weight:clamp(M.num(get(r,'weight'),1),.1,3),minV:mn===''?'':Math.max(0,M.intOr(mn,0)),maxV:mx===''?'':Math.max(0,M.intOr(mx,0)),days:parseDays(get(r,'days'),[true,true,true,true,true,true,true]),blackout:parseDates(get(r,'blackout')),active:boolish(get(r,'active'),true)}));
       }else{
         const rn=get(r,'roles').split(/[|;]+/).map(s=>s.trim()).filter(Boolean);
         const roles=rn.map(x=>{let ro=ws.roles.find(q=>q.name.toLowerCase()===x.toLowerCase());if(!ro){ro=M.mkRole(x,M.COLORS[ws.roles.length%M.COLORS.length]);ws.roles.push(ro)}return ro.id});
         if(!roles.length&&ws.roles[0])roles.push(ws.roles[0].id);
         const pf=get(r,'pref').toLowerCase();const mx=get(r,'max'),mw=get(r,'max_week');
-        ws.people.push(M.mkPerson(name,roles,{home:Math.max(0,M.num(get(r,'home'),0)),pref:['near','far'].includes(pf)?pf:'none',weight:clamp(M.num(get(r,'weight'),1),.5,2),days:parseDays(get(r,'days'),[true,true,true,true,true,false,false]),off:parseDates(get(r,'off')),maxLoad:mx===''?'':Math.max(0,M.intOr(mx,0)),maxWeek:mw===''?'':Math.max(0,M.intOr(mw,0)),active:boolish(get(r,'active'),true)}));
+        ws.people.push(M.mkPerson(name,roles,{rank:clamp(M.num(get(r,'rank'),50),0,100),home:Math.max(0,M.num(get(r,'home'),0)),pref:['near','far'].includes(pf)?pf:'none',weight:clamp(M.num(get(r,'weight'),1),.1,3),days:parseDays(get(r,'days'),[true,true,true,true,true,false,false]),off:parseDates(get(r,'off')),maxLoad:mx===''?'':Math.max(0,M.intOr(mx,0)),maxWeek:mw===''?'':Math.max(0,M.intOr(mw,0)),active:boolish(get(r,'active'),true)}));
       }
       n++;
     });
+    M.syncLoc(ws);
   });
   toast(t('impDone',{n,k}),n?'':'warn');
 }
 function csvTemplate(kind){
   const ws=APP.ws;
-  if(kind==='sites'){const c=ws.categories[0]?ws.categories[0].name:'Main';return '\uFEFF'+[['name','category','km','zone','weight','min','max','days','blackout','active'],['Central Clinic',c,'4','North','1','','','1111100','','1'],['Harbour Office',c,'22','East','1.5','1','4','0111110','2026-10-06|2026-10-07','1']].map(M.csvRow).join('\r\n')}
-  const r=ws.roles.map(x=>x.name);return '\uFEFF'+[['name','roles','home','pref','weight','days','off','max','max_week','active'],['Alex',r[0]||'Lead','5','near','1','0111110','','','3','1'],['Sam',r.slice(0,2).join('|')||'Lead','12','none','1','1111100','2026-10-12','','','1']].map(M.csvRow).join('\r\n');
+  if(kind==='locations')return '\uFEFF'+[['name','km'],['Central','0'],['North town','18']].map(M.csvRow).join('\r\n');
+  if(kind==='sites'){const c=ws.categories[0]?ws.categories[0].name:'Main';return '\uFEFF'+[['name','category','location','km','crit','tag','zone','weight','min','max','days','blackout','active'],['Central Clinic',c,'Central','0','75','Clinic','','1','','','1111100','','1'],['Harbour Office',c,'','22','50','Office','East','1.5','1','4','0111110','2026-10-06|2026-10-07','1']].map(M.csvRow).join('\r\n')}
+  const r=ws.roles.map(x=>x.name);return '\uFEFF'+[['name','roles','rank','home','pref','weight','days','off','max','max_week','active'],['Alex',r[0]||'Lead','75','5','near','1','0111110','','','3','1'],['Sam',r.slice(0,2).join('|')||'Lead','50','12','none','1','1111100','2026-10-12','','','1']].map(M.csvRow).join('\r\n');
 }
 function csvExport(kind){
   const ws=APP.ws;const b=d=>d.map(x=>x?'1':'0').join('');
-  if(kind==='sites'){const cn=id=>{const c=byId(ws.categories,id);return c?c.name:''};return '\uFEFF'+[['name','category','km','zone','weight','min','max','days','blackout','active']].concat(ws.sites.map(s=>[s.name,cn(s.cat),s.km,s.zone,s.weight,s.minV,s.maxV,b(s.days),s.blackout.join('|'),s.active?1:0])).map(M.csvRow).join('\r\n')}
+  const ln=id=>{const l=byId(ws.locations,id);return l?l.name:''};
+  if(kind==='sites'){const cn=id=>{const c=byId(ws.categories,id);return c?c.name:''};return '\uFEFF'+[['name','category','location','km','crit','tag','zone','weight','min','max','days','blackout','active']].concat(ws.sites.map(s=>[s.name,cn(s.cat),ln(s.loc),s.km,s.crit,s.tag,s.zone,s.weight,s.minV,s.maxV,b(s.days),s.blackout.join('|'),s.active?1:0])).map(M.csvRow).join('\r\n')}
   const rn=id=>{const r=byId(ws.roles,id);return r?r.name:''};
-  return '\uFEFF'+[['name','roles','home','pref','weight','days','off','max','max_week','active']].concat(ws.people.map(p=>[p.name,p.roles.map(rn).join('|'),p.home,p.pref,p.weight,b(p.days),p.off.join('|'),p.maxLoad,p.maxWeek,p.active?1:0])).map(M.csvRow).join('\r\n');
+  return '\uFEFF'+[['name','roles','rank','home','pref','weight','days','off','max','max_week','active']].concat(ws.people.map(p=>[p.name,p.roles.map(rn).join('|'),p.rank,p.home,p.pref,p.weight,b(p.days),p.off.join('|'),p.maxLoad,p.maxWeek,p.active?1:0])).map(M.csvRow).join('\r\n');
 }
 let fileMode=null;
 function pickFile(mode,accept){fileMode=mode;const f=$('#fileIn');f.value='';f.accept=accept;f.click()}
@@ -319,7 +355,8 @@ $('#fileIn').addEventListener('change',e=>{
     const txt=String(rd.result||'');
     if(fileMode==='wsJson'){
       try{const o=JSON.parse(txt);let w;
-        if(Array.isArray(o.facilities)&&Array.isArray(o.people))w=M.migrateLegacy(o);else w=M.normalize(o.workspace||o);
+        if(o.location_distances_km||o.facility_criticality||(Array.isArray(o.facilities)&&o.facilities[0]&&o.facilities[0].location!==undefined))w=M.fromDataset(o,file.name.replace(/\.(json|txt)+$/i,''));
+        else if(Array.isArray(o.facilities)&&Array.isArray(o.people))w=M.migrateLegacy(o);else w=M.normalize(o.workspace||o);
         if(APP.ix.list.some(x=>x.id===w.id))w.id=uid('w');
         w.updated=Date.now();saveNow();switchTo(w);toast(t('imported'));
       }catch(err){toast(t('invalid',{e:err.message}),'warn')}
@@ -376,9 +413,12 @@ function paletteItems(q){
     {label:t('matrix'),kind:t('palCmd'),icon:'ic-grid',run:()=>setLayout('matrix')},
     {label:t('calendar'),kind:t('palCmd'),icon:'ic-cal',run:()=>setLayout('calendar')},
     {label:t('saveSnap'),kind:t('palCmd'),icon:'ic-camera',run:()=>act.snapSave()},
+    {label:t('loadDataset'),kind:t('palCmd'),icon:'ic-layers',run:loadDataset},
+    {label:t('pr_once'),kind:t('presets'),icon:'ic-target',run:()=>applyPreset('once')},
+    {label:t('pr_twice'),kind:t('presets'),icon:'ic-target',run:()=>applyPreset('twice')},
     {label:t('kbdT'),kind:t('palCmd'),icon:'ic-keyboard',run:()=>openModal(V.kbdModal())}
   ];
-  [['plan','tabPlan','ic-cal'],['sites','tabSites','ic-build'],['people','tabPeople','ic-users'],['rules','tabRules','ic-sliders'],['insights','tabInsights','ic-chart'],['workspace','tabWs','ic-layers']].forEach(([v,l,i])=>cmds.push({label:t('goTo')+' '+t(l),kind:t('palCmd'),icon:i,run:()=>{APP.view=v;render()}}));
+  [['plan','tabPlan','ic-cal'],['sites','tabSites','ic-build'],['people','tabPeople','ic-users'],['rules','tabRules','ic-sliders'],['model','tabModel','ic-sigma'],['insights','tabInsights','ic-chart'],['workspace','tabWs','ic-layers']].forEach(([v,l,i])=>cmds.push({label:t('goTo')+' '+t(l),kind:t('palCmd'),icon:i,run:()=>{APP.view=v;render()}}));
   M.TEMPLATE_ORDER.forEach(k=>cmds.push({label:t('newWs')+': '+t('tpl_'+k),kind:t('palCmd'),icon:'ic-layers',run:()=>newWorkspace(k)}));
   APP.ix.list.filter(x=>x.id!==ws.id).forEach(x=>cmds.push({label:t('open_')+': '+x.name,kind:t('tabWs'),icon:'ic-layers',run:()=>{const w=Store.load(x.id);if(w)switchTo(w)}}));
   let out=cmds.filter(c=>!q||c.label.toLowerCase().includes(q));
@@ -425,8 +465,58 @@ function dpkPick(iso){
   closePop();
 }
 
+function applyBind(bd,ds,v){
+  switch(bd){
+    case 'site':case 'person':{
+      const arr=bd==='site'?'sites':'people',id=ds.id,f=ds.f;let val=v;
+      if(f==='crit'||f==='rank')val=clamp(M.intOr(v,50),0,100);
+      commit(ws=>{const x=byId(ws[arr],id);if(!x)return;x[f]=val;if(f==='loc'||f==='homeLoc')M.syncLoc(ws)});break}
+    case 'rankBy':commit(ws=>{const p=byId(ws.people,ds.id);if(!p)return;if(v==='')delete p.rankBy[ds.c];else p.rankBy[ds.c]=clamp(M.intOr(v,50),0,100)});break;
+    case 'tokenAdd':{
+      if(!v)return;const id=ds.id,f=ds.f;
+      commit(ws=>{const p=byId(ws.people,id);if(!p[f].includes(v))p[f].push(v);if(f==='avoid'||f==='pair'){const q=byId(ws.people,v);const other=f==='avoid'?'pair':'avoid';p[other]=p[other].filter(x=>x!==v);if(q){if(!q[f].includes(p.id))q[f].push(p.id);q[other]=q[other].filter(x=>x!==p.id)}}if(f==='likes')p.bans=p.bans.filter(x=>x!==v);if(f==='bans')p.likes=p.likes.filter(x=>x!==v)});
+      break}
+    case 'dayFocus':dayOverride(ds.iso,{focus:v});break;
+    case 'weekFocus':commit(ws=>{ws.week[+ds.i].focus=v});break;
+    case 'rule':{const k=ds.k;commit(ws=>{ws.rules[k]=k==='weekStart'||k==='rankTol'?M.intOr(v,0):Math.max(0,M.num(v,10))});break}
+    case 'unit':commit(ws=>{ws.unit=v==='mi'?'mi':'km'},{solve:false});break;
+    case 'expWho':expState.who=v;refreshExport();break;
+    case 'siteLoc':APP.f.siteLoc=v;APP.f.sitePage=0;render();break;
+    case 'goal':commit(ws=>{const g=byId(ws.goals,ds.id);if(!g)return;g[ds.f]=v;if(ds.f==='scope'){g.ref=v==='crit'?'75':''}});break;
+    case 'preset':applyPreset(v);break;
+  }
+}
+function applyPreset(k){
+  commit(ws=>{
+    if(k==='clear'){ws.goals=[];ws.sizing.mode='rhythm';return}
+    if(k==='once'||k==='twice'){ws.goals=[M.mkGoal({per:'each',scope:'all',op:'min',n:k==='once'?1:2})];ws.sizing.mode='goals'}
+    if(k==='crit'){ws.goals.push(M.mkGoal({per:'each',scope:'crit',ref:'100',op:'min',n:2}));ws.goals.push(M.mkGoal({per:'each',scope:'crit',ref:'75',op:'min',n:1}))}
+  });
+  toast(t('presetDone'));
+}
+async function loadDataset(keepView){
+  try{
+    const r=await fetch('data/complete_data.json');if(!r.ok)throw new Error(r.status);
+    const o=await r.json();const w=M.fromDataset(o,t('datasetName'));
+    saveNow();switchTo(w);if(keepView!==true)APP.view='plan';render();toast(t('imported'));
+  }catch(e){toast(t('invalid',{e:e.message}),'warn')}
+}
 const act={
   palette:openPalette,undo,redo,
+  dd(b){openDD(b)},
+  ddPick(b){ddPick(+b.dataset.i)},
+  loadDataset(){loadDataset()},
+  sizeMode(b){commit(ws=>{ws.sizing.mode=b.dataset.v;if(b.dataset.v==='total'&&!ws.sizing.total)ws.sizing.total=M.planDays(ws).reduce((s,d)=>s+d.cfg.n,0)})},
+  sizeTotal(b){commit(ws=>{ws.sizing.total=clamp(ws.sizing.total+ +b.dataset.d*(ws.sizing.total>=40?5:1),0,9999)},{co:'szt'})},
+  goalAdd(){commit(ws=>{ws.goals.push(M.mkGoal(ws.goals.length?{per:'total',scope:'cat',ref:(ws.categories.find(c=>c.planned)||{}).id||'',n:10}:{}))})},
+  goalDel(b){commit(ws=>{ws.goals=ws.goals.filter(g=>g.id!==b.dataset.id)})},
+  goalOn(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(g)g.on=!g.on})},
+  goalN(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(g)g.n=clamp(g.n+ +b.dataset.d,0,9999)},{co:'gn'+b.dataset.id})},
+  addLoc(){commit(ws=>{ws.locations.unshift(M.mkLoc(t('location')+' '+(ws.locations.length+1),0))});setTimeout(()=>{const i=$('#locations-card .locitem input');i&&(i.focus(),i.select())},30)},
+  delLoc(b){armOr(b,'dl'+b.dataset.id,()=>commit(ws=>{const id=b.dataset.id;ws.locations=ws.locations.filter(l=>l.id!==id);ws.sites.forEach(s=>{if(s.loc===id)s.loc=''});ws.people.forEach(p=>{if(p.homeLoc===id)p.homeLoc=''});ws.goals=ws.goals.filter(g=>!(g.scope==='loc'&&g.ref===id))}))},
+  pattern(b){commit(ws=>{ws.rules.runMax=+b.dataset.rm;ws.rules.offMin=+b.dataset.om})},
+  rankGate(b){commit(ws=>{ws.rules.rankGate=b.dataset.v})},
+  scopeLen(b){commit(ws=>{const r=rangeOf(ws);const n=clamp(M.diffDays(r.start,r.end)+1+ +b.dataset.d,1,366);ws.scope.end=addISO(r.start,n-1)},{co:'sl'})},
   theme(){APP.prefs.theme=APP.prefs.theme==='dusk'?'light':'dusk';applyLook();saveNow();refreshChrome();if(APP.view==='workspace')render()},
   themeSet(b){APP.prefs.theme=b.dataset.v;applyLook();saveNow();render()},
   lang(b){setLang(b.dataset.v)},
@@ -484,7 +574,7 @@ const act={
   catShare(b){commit(ws=>{const c=byId(ws.categories,b.dataset.id);c.share=clamp(c.share+ +b.dataset.d,0,50)},{co:'csh'+b.dataset.id})},
   weekOn(b){commit(ws=>{const d=ws.week[+b.dataset.i];d.on=!d.on;if(d.on&&!d.n)d.n=1})},
   weekN(b){commit(ws=>{const d=ws.week[+b.dataset.i];d.n=clamp(d.n+ +b.dataset.d,1,50)},{co:'wn'+b.dataset.i})},
-  ruleStep(b){const k=b.dataset.k,mx={perDay:10,rest:14,siteGap:60}[k];commit(ws=>{ws.rules[k]=clamp(ws.rules[k]+ +b.dataset.d,0,mx)},{co:'rs'+k})},
+  ruleStep(b){const k=b.dataset.k,mx={perDay:10,runMax:14,offMin:14,siteGap:60}[k];commit(ws=>{ws.rules[k]=clamp(ws.rules[k]+ +b.dataset.d,0,mx);if(k==='runMax'&&ws.rules.runMax>0&&!ws.rules.offMin)ws.rules.offMin=1},{co:'rs'+k})},
   ruleToggle(b){commit(ws=>{ws.rules[b.dataset.k]=!ws.rules[b.dataset.k]})},
   ruleMode(b){commit(ws=>{ws.rules.mode=b.dataset.v})},
   engQuality(b){commit(ws=>{ws.engine.quality=b.dataset.v})},
@@ -516,7 +606,7 @@ const act={
 
 document.addEventListener('click',e=>{
   const b=e.target.closest('[data-act]');
-  if(pop&&!e.target.closest('.pop,.dpk-pop,.swatches')&&!(b&&(b.dataset.act==='dpk'||b.dataset.act==='color'))){if(!(b&&/^x(seat|visit)$/.test(b.dataset.act)))closePop()}
+  if(pop&&!e.target.closest('.pop,.dpk-pop,.swatches,.ddpop')&&!(b&&(b.dataset.act==='dpk'||b.dataset.act==='color'||b.dataset.act==='dd'))){if(!(b&&/^x(seat|visit)$/.test(b.dataset.act)))closePop()}
   if(!b||b.disabled)return;
   const fn=act[b.dataset.act];if(!fn)return;
   const r=fn(b,e);
@@ -539,6 +629,8 @@ document.addEventListener('input',e=>{
     commit(ws=>{const x=byId(ws[arr],id);if(x)x[f]=v},{render:false,solve:f==='zone',co:'txt'+id+f});
     return;
   }
+  if(bd==='site'&&el.dataset.f==='tag'){const id=el.dataset.id,v=el.value;commit(ws=>{const x=byId(ws.sites,id);if(x)x.tag=v},{render:false,solve:false,co:'tag'+id});return}
+  if(bd==='loc'&&el.dataset.f==='name'){const id=el.dataset.id,v=el.value;commit(ws=>{const x=byId(ws.locations,id);if(x)x.name=v},{render:false,solve:false,co:'ln'+id});return}
   if(bd==='role'||bd==='cat'){const arr=bd==='role'?'roles':'categories';const id=el.dataset.id,v=el.value;commit(ws=>{const x=byId(ws[arr],id);if(x)x.name=v},{render:false,solve:false,co:'nm'+id});return}
   if(bd==='term'){const f=el.dataset.f,v=el.value;commit(ws=>{ws.terms[I.lang()][f]=v},{render:false,solve:false,co:'term'+f});return}
   if(bd==='wsName'){const v=el.value;commit(ws=>{ws.name=v||'Untitled'},{render:false,solve:false,co:'wsn'});return}
@@ -550,24 +642,20 @@ document.addEventListener('change',e=>{
     case 'site':case 'person':{
       const arr=bd==='site'?'sites':'people';const id=el.dataset.id,f=el.dataset.f;
       if(f==='name'||f==='zone')return;
+      if(f==='tag'){scheduleSolve();break}
       let val=v;
       if(f==='km'||f==='home')val=Math.max(0,M.num(v,0));
-      else if(f==='weight')val=clamp(M.num(v,1),.5,2);
+      else if(f==='weight')val=clamp(M.num(v,1),.1,3);
       else if(f==='minV'||f==='maxV'||f==='maxLoad'||f==='maxWeek')val=v===''?'':Math.max(0,M.intOr(v,0));
       commit(ws=>{const x=byId(ws[arr],id);if(x)x[f]=val},{render:f==='cat'||f==='pref'});
       break;}
-    case 'tokenAdd':{
-      if(!v)return;const id=el.dataset.id,f=el.dataset.f;
-      commit(ws=>{const p=byId(ws.people,id);if(!p[f].includes(v))p[f].push(v);if(f==='avoid'||f==='pair'){const q=byId(ws.people,v);const other=f==='avoid'?'pair':'avoid';p[other]=p[other].filter(x=>x!==v);if(q){if(!q[f].includes(p.id))q[f].push(p.id);q[other]=q[other].filter(x=>x!==p.id)}}if(f==='likes')p.bans=p.bans.filter(x=>x!==v);if(f==='bans')p.likes=p.likes.filter(x=>x!==v)});
-      break;}
-    case 'dayFocus':dayOverride(el.dataset.iso,{focus:v});break;
-    case 'weekFocus':commit(ws=>{ws.week[+el.dataset.i].focus=v});break;
-    case 'rule':{const k=el.dataset.k;commit(ws=>{ws.rules[k]=k==='weekStart'?M.intOr(v,0):Math.max(0,M.num(v,10))});break}
+    case 'loc':{const id=el.dataset.id,f=el.dataset.f;if(f==='km')commit(ws=>{const l=byId(ws.locations,id);if(l){l.km=Math.max(0,M.num(v,0));l.unknown=false;M.syncLoc(ws)}});else render();break}
+    case 'sizeTotal':commit(ws=>{ws.sizing.total=clamp(M.intOr(v,0),0,9999)});break;
+    case 'rule':{const k=el.dataset.k;commit(ws=>{ws.rules[k]=Math.max(0,M.num(v,10))});break}
     case 'engine':commit(ws=>{ws.engine.seed=Math.max(1,M.intOr(v,1))});break;
     case 'weight':{const k=el.dataset.k;commit(ws=>{ws.weights[k]=clamp(M.intOr(v,50),0,100)},{render:false});break}
     case 'unit':commit(ws=>{ws.unit=v==='mi'?'mi':'km'},{solve:false});break;
     case 'term':case 'role':case 'cat':case 'wsName':render();break;
-    case 'expWho':expState.who=v;refreshExport();break;
   }
 });
 document.addEventListener('focusout',()=>{setTimeout(()=>{if(pendingRender&&!isEditing())render()},0)});
@@ -583,13 +671,14 @@ document.addEventListener('mouseover',e=>{
 document.addEventListener('keydown',e=>{
   const k=e.key,mod=e.ctrlKey||e.metaKey;
   if(mod&&k.toLowerCase()==='k'){e.preventDefault();palState?closeModal():openPalette();return}
-  if(k==='Escape'){if(pop){closePop();return}if(modal){closeModal();return}}
+  if(k==='Escape'){if(pop){const b=ddState&&ddState.btn;closePop();b&&b.isConnected&&b.focus();return}if(modal){closeModal();return}}
+  if(pop&&ddState&&(k==='ArrowDown'||k==='ArrowUp')&&e.target.id!=='ddQ'){ddKeys(e);return}
   const typing=/^(INPUT|SELECT|TEXTAREA)$/.test((document.activeElement||{}).tagName||'');
   if(mod&&k.toLowerCase()==='z'&&!typing){e.preventDefault();e.shiftKey?redo():undo();return}
   if(mod&&k.toLowerCase()==='y'&&!typing){e.preventDefault();redo();return}
   if(typing||mod||e.altKey||modal)return;
-  const views=['plan','sites','people','rules','insights','workspace'];
-  if(/^[1-6]$/.test(k)){APP.view=views[+k-1];closePop();render();return}
+  const views=VIEWS_ORDER;
+  if(/^[1-7]$/.test(k)){APP.view=views[+k-1];closePop();render();return}
   const lk=k.toLowerCase();
   if(lk==='g'){solve({});return}
   if(lk==='r'){reroll();return}
@@ -613,7 +702,7 @@ function boot(){
   if(!ws){
     const lg=Store.legacy();
     if(lg){try{ws=M.migrateLegacy(lg);migrated=true;if(lg.settings&&lg.settings.lang)APP.prefs.lang=lg.settings.lang}catch(e){ws=null}}
-    if(!ws){ws=M.TEMPLATES.field();const d=new Date();ws.scope={mode:'month',start:fISO(new Date(d.getFullYear(),d.getMonth(),1)),end:''}}
+    if(!ws){ws=M.TEMPLATES.field();const d=new Date();ws.scope={mode:'month',start:fISO(new Date(d.getFullYear(),d.getMonth(),1)),end:''};APP._firstRun=true}
   }
   applyLook();
   const hv=location.hash.slice(1);if(VIEWFN[hv])APP.view=hv;
@@ -621,6 +710,7 @@ function boot(){
   Store.save(ws,APP.ix);
   render();
   if(migrated)toast(t('migrated'));
+  if(APP._firstRun&&location.protocol!=='file:'){APP._firstRun=false;loadDataset(true);return}
   if(!ws.plan&&APP.compiled().P.V)solve({quiet:true});
 }
 boot();
