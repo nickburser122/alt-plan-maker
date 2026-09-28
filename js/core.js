@@ -26,10 +26,10 @@ const todayISO=()=>fISO(new Date());
 const validISO=s=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&fISO(pISO(s))===s;
 function weekStartOf(iso,ws){const d=dowOf(iso);return addISO(iso,-((d-ws+7)%7))}
 
-const COLORS=['#1F5F5B','#4E8C86','#3F5A8A','#8A6A3F','#5E7A4A','#9A4F4F','#6A4F8A','#A07A3A','#3F7A8A','#8A4F6D'];
+const COLORS=['#5A4E7C','#6F8AA3','#4D7178','#B0765A','#6E8A63','#A0596A','#8A7A4C','#4F7C72','#7B6592','#98806C'];
 const LEVELS=[0,25,50,75,100];
-const WEIGHT_KEYS=['goals','rank','fair','rotate','mix','pref','home','focus','cluster','spacing','pairs','likes'];
-const defaultWeights=()=>({fair:70,pref:45,home:35,rotate:60,mix:60,focus:55,cluster:45,spacing:35,pairs:50,likes:40,rank:60,goals:80});
+const WEIGHT_KEYS=['goals','book','rank','fair','rotate','mix','pref','home','focus','cluster','spacing','pairs','likes'];
+const defaultWeights=()=>({fair:70,pref:45,home:35,rotate:60,mix:60,focus:55,cluster:45,spacing:35,pairs:50,likes:40,rank:60,goals:80,book:50});
 const defaultUseW=()=>{const o={};WEIGHT_KEYS.forEach(k=>o[k]=true);return o};
 const defaultRules=()=>({perDay:1,runMax:1,offMin:1,distinct:true,siteGap:0,mode:'bend',nearKm:10,weekStart:0,rankGate:'off',rankTol:25});
 const defaultEngine=()=>({seed:20260907,quality:'balanced',runs:3,live:true});
@@ -46,7 +46,7 @@ function blankWS(name){
   return {v:3,id:uid('w'),name:name||'Untitled plan',created:now,updated:now,
     template:'blank',
     terms:clone(TERM_DEFAULT),unit:'km',
-    roles:[],categories:[],sites:[],people:[],locations:[],goals:[],sizing:defaultSizing(),
+    roles:[],categories:[],sites:[],people:[],locations:[],routes:[],goals:[],book:[],sizing:defaultSizing(),source:null,
     week:WEEK5(1,1),overrides:{},
     scope:{mode:'month',start:fISO(new Date(new Date().getFullYear(),new Date().getMonth(),1)),end:''},
     rules:defaultRules(),weights:defaultWeights(),useW:defaultUseW(),engine:defaultEngine(),
@@ -56,8 +56,90 @@ function mkRole(name,color){return {id:uid('r'),name,color}}
 function mkCat(name,color,staff,share,planned){return {id:uid('c'),name,color,staff:staff||{},share:share==null?1:share,planned:planned!==false}}
 function mkLoc(name,km,o){return Object.assign({id:uid('l'),name,km:km||0},o||{})}
 function mkSite(name,cat,km,o){return Object.assign({id:uid('s'),name,cat,km:km||0,loc:'',crit:50,tag:'',zone:'',weight:1,minV:'',maxV:'',days:[true,true,true,true,true,true,true],blackout:[],active:true,note:''},o||{})}
-function mkPerson(name,roles,o){return Object.assign({id:uid('p'),name,roles:roles||[],home:0,homeLoc:'',rank:50,rankBy:{},gender:'',pref:'none',weight:1,days:[true,true,true,true,true,true,true],off:[],maxLoad:'',maxWeek:'',avoid:[],pair:[],likes:[],bans:[],active:true},o||{})}
+function mkPerson(name,roles,o){return Object.assign({id:uid('p'),name,roles:roles||[],home:0,homeLoc:'',rank:50,rankBy:{},gender:'',pref:'none',weight:1,days:[true,true,true,true,true,true,true],off:[],maxLoad:'',maxWeek:'',runMax:'',offMin:'',avoid:[],pair:[],likes:[],bans:[],active:true},o||{})}
 function mkGoal(o){return Object.assign({id:uid('g'),on:true,per:'each',scope:'all',ref:'',op:'min',n:1},o||{})}
+
+const SENSES=['prefer','avoid','only','never'];
+const WHO_K=['all','person','role','gender','rankGe','rankLe'];
+const WHAT_K=['all','site','cat','loc','tag','critGe','kmGe','kmLe'];
+const RELS=['site','day','with','team'];
+const FLIP={prefer:'avoid',avoid:'prefer',only:'never',never:'only'};
+const isHard=r=>r.sense==='only'||r.sense==='never';
+function normM(m,ks){m=m||{};return {k:ks.includes(m.k)?m.k:'all',v:m.v==null?'':String(m.v)}}
+function normRule(r){
+  r=r||{};const rel=RELS.includes(r.rel)?r.rel:'site';
+  let sense=SENSES.includes(r.sense)?r.sense:'avoid';
+  if(rel==='team'){if(sense==='avoid')sense='prefer';if(sense==='never')sense='only'}
+  let what;
+  if(rel==='day')what={k:'dow',v:arr7(r.what&&r.what.v,false)};
+  else what=normM(r.what,rel==='with'?WHO_K:WHAT_K);
+  return {id:typeof r.id==='string'&&r.id?r.id:uid('b'),on:r.on!==false,rel,sense,who:normM(r.who,WHO_K),what,
+    op:r.op==='min'?'min':'max',n:clamp(intOr(r.n,1),0,20),w:clamp(num(r.w,50),0,100),note:String(r.note||'').slice(0,160)};
+}
+function mkRule(o){return normRule(Object.assign({on:true,rel:'site',sense:'avoid',who:{k:'all',v:''},what:{k:'all',v:''},op:'max',n:1,w:50},o||{}))}
+function whoMatch(p,m){
+  switch(m.k){
+    case 'person':return p.id===m.v;
+    case 'role':return p.roles.includes(m.v);
+    case 'gender':return (p.gender||'')===m.v;
+    case 'rankGe':return (+p.rank||0)>=(+m.v||0);
+    case 'rankLe':return (+p.rank||0)<=(+m.v||0);
+  }
+  return true;
+}
+function whatMatch(s,m){
+  switch(m.k){
+    case 'site':return s.id===m.v;
+    case 'cat':return s.cat===m.v;
+    case 'loc':return s.loc===m.v;
+    case 'tag':return (s.tag||'')===m.v;
+    case 'critGe':return (+s.crit||0)>=(+m.v||0);
+    case 'kmGe':return (+s.km||0)>=(+m.v||0);
+    case 'kmLe':return (+s.km||0)<=(+m.v||0);
+  }
+  return true;
+}
+function refResolver(ws){
+  const by=(arr,v,pre)=>{if(v==null||v==='')return '';v=String(v);const x=arr.find(a=>a.id===v)||arr.find(a=>a.id===pre+v)||arr.find(a=>String(a.name).trim()===v.trim());return x?x.id:v};
+  return (k,v)=>{
+    switch(k){
+      case 'person':return by(ws.people,v,'p_');
+      case 'role':return by(ws.roles,v,'r_');
+      case 'cat':return by(ws.categories,v,'c_');
+      case 'loc':return by(ws.locations||[],v,'l_');
+      case 'site':return by(ws.sites,v,'f_');
+    }
+    return v==null?'':String(v);
+  };
+}
+function resolveBook(ws,list){
+  const R=refResolver(ws);
+  return (Array.isArray(list)?list:[]).map(r=>{
+    const x=normRule(r);
+    x.who.v=R(x.who.k,x.who.v);
+    if(x.rel!=='day')x.what.v=R(x.what.k,x.what.v);
+    if(!(r&&typeof r.id==='string'&&r.id))x.id=uid('b');
+    return x;
+  });
+}
+function resolveGoals(ws,list){
+  const R=refResolver(ws);const map={cat:'cat',loc:'loc',site:'site'};
+  return (Array.isArray(list)?list:[]).map(g=>mkGoal(Object.assign({},g,{id:uid('g'),ref:map[g.scope]?R(map[g.scope],g.ref):String(g.ref==null?'':g.ref)})));
+}
+function bookForExport(ws,list){
+  const nm=(arr,id)=>{const x=byId(arr,id);return x?x.name:id};
+  const out=(k,v)=>{
+    switch(k){
+      case 'role':return String(v).replace(/^r_/,'');
+      case 'cat':return /^c_/.test(v)?v.slice(2):nm(ws.categories,v);
+      case 'loc':return nm(ws.locations||[],v);
+      case 'site':return nm(ws.sites,v);
+    }
+    return v;
+  };
+  return (list||ws.book||[]).map(r=>{const o={on:r.on,rel:r.rel,sense:r.sense,who:{k:r.who.k,v:out(r.who.k,r.who.v)},what:r.rel==='day'?{k:'dow',v:r.what.v.slice()}:{k:r.what.k,v:out(r.what.k,r.what.v)},w:r.w};
+    if(r.rel==='team'){o.op=r.op;o.n=r.n}if(r.note)o.note=r.note;return o});
+}
 
 function tplBlank(){
   const w=blankWS('Untitled plan');
@@ -125,20 +207,23 @@ const TEMPLATES={blank:tplBlank,field:tplField,retail:tplRetail,care:tplCare};
 const TEMPLATE_ORDER=['field','retail','care','blank'];
 
 function fromDataset(o,name){
-  const w=blankWS(name||'Beheira branch');w.template='dataset';
+  const w=blankWS(name||o.name||'Beheira branch');w.template='dataset';
   w.terms={en:{visit:'visit',visits:'visits',site:'facility',sites:'facilities',person:'member',people:'team'},
            ar:{visit:'زيارة',visits:'زيارات',site:'منشأة',sites:'منشآت',person:'عضو',people:'الفريق'}};
+  if(o.terms&&typeof o.terms==='object'){w.terms.en=Object.assign(w.terms.en,o.terms.en||{});w.terms.ar=Object.assign(w.terms.ar,o.terms.ar||{})}
   const dist=o.location_distances_km||{};
-  w.locations=Object.keys(dist).map(n=>mkLoc(n,Math.max(0,num(dist[n],0))));
-  const locId=n=>{if(!n)return '';let l=w.locations.find(x=>x.name===n);if(!l){l=mkLoc(n,0,{unknown:true});w.locations.push(l)}return l.id};
+  const lid=n=>'l_'+fnv(String(n));
+  w.locations=Object.keys(dist).map(n=>mkLoc(n,Math.max(0,num(dist[n],0)),{id:lid(n)}));
+  const locId=n=>{if(!n)return '';let l=w.locations.find(x=>x.name===n);if(!l){l=mkLoc(n,0,{id:lid(n),unknown:true});w.locations.push(l)}return l.id};
   const pools=o.pools||{fin:{id:'fin',name:'Financial/Admin',seats:{basic:2,contracted:1}},clin:{id:'clin',name:'Clinical',seats:{basic:2,contracted:2}}};
   const pk=Object.keys(pools);
-  const roles={};pk.forEach((k,i)=>{roles[k]=mkRole(pools[k].name||k,COLORS[i===0?0:2+i])});
+  const roles={};pk.forEach((k,i)=>{roles[k]=mkRole(pools[k].name||k,pools[k].color||COLORS[i===0?0:2+i]);roles[k].id='r_'+k});
   w.roles=pk.map(k=>roles[k]);
   const st=kind=>{const s={};pk.forEach(k=>s[roles[k].id]=intOr(pools[k].seats&&pools[k].seats[kind],0));return s};
   const ds=o.default_settings||{};
   const rp=num(ds.ratioP,.25);const bShare=rp>0&&rp<1?Math.max(1,Math.round((1-rp)/rp)):3;
   const cBasic=mkCat('Basic',COLORS[0],st('basic'),bShare),cCon=mkCat('Contracted',COLORS[3],st('contracted'),1),cExc=mkCat('Excluded',COLORS[6],{},0,false);
+  cBasic.id='c_basic';cCon.id='c_contracted';cExc.id='c_excluded';
   w.categories=[cBasic,cCon,cExc];
   const kindCat={basic:cBasic.id,contracted:cCon.id,excluded:cExc.id};
   const cg=o.categories||{};const pats=cg.excluded_by_name_pattern||[];
@@ -146,7 +231,8 @@ function fromDataset(o,name){
   const crits=o.facility_criticality||{};
   const facs=o.facilities||[];
   w.sites=facs.map((f,i)=>{const k=kindOf(f);const cr=f.crit!=null?f.crit:crits[f.name]!=null?crits[f.name]:(k==='excluded'?0:50);
-    return mkSite(String(f.name),kindCat[k]||cBasic.id,0,{id:f.id||('f_'+i),loc:locId(f.location),tag:f.category||'',crit:clamp(num(cr,50),0,100),weight:clamp(num(f.weight,1),.1,3)})});
+    const low=(o.admin_low_frequency_facilities||[]).includes(f.name);
+    return mkSite(String(f.name),kindCat[k]||cBasic.id,0,{id:f.id||('f_'+i),loc:locId(f.location),tag:f.category||'',crit:clamp(num(cr,50),0,100),weight:clamp(num(f.weight,low?.5:1),.1,3),active:f.active!==false,minV:f.min==null?'':f.min,maxV:f.max==null?'':f.max})});
   const wd=Array.isArray(ds.weekdays)?ds.weekdays:[0,1,2,3,4];
   const per=Math.max(1,intOr(ds.maxVisitsPerDay,1));
   w.week=[0,1,2,3,4,5,6].map(i=>({on:wd.includes(i),n:wd.includes(i)?per:0,focus:'auto'}));
@@ -156,18 +242,93 @@ function fromDataset(o,name){
     const rank=p.rank!=null?num(p.rank,50):(rb!=null&&rc!=null?Math.round((rb+rc)/2):50);
     const rankBy={};if(rb!=null)rankBy[cBasic.id]=rb;if(rc!=null)rankBy[cCon.id]=rc;
     const days=Array.isArray(p.workWeekdays)?[0,1,2,3,4,5,6].map(d=>p.workWeekdays.includes(d)):[true,true,true,true,true,true,true];
+    const pat=p.pattern&&typeof p.pattern==='object'?p.pattern:{};
     return mkPerson(String(p.name),rr,{id:p.id||('p_'+i),homeLoc:locId(p.originLocationId||''),rank,rankBy,gender:p.gender||'',weight:clamp(num(p.weight,1),.1,3),active:p.active!==false,days,
-      off:(Array.isArray(p.unavailable)?p.unavailable:[]).filter(validISO),bans:Array.isArray(p.blockedFacilities)?p.blockedFacilities:[],pref:num(p.distanceAffinity,0)>0?'far':num(p.distanceAffinity,0)<0?'near':'none',note:p.title||''})});
+      off:(Array.isArray(p.unavailable)?p.unavailable:[]).filter(validISO),bans:Array.isArray(p.blockedFacilities)?p.blockedFacilities:[],pref:num(p.distanceAffinity,0)>0?'far':num(p.distanceAffinity,0)<0?'near':'none',note:p.title||'',
+      runMax:pat.work==null?'':intOr(pat.work,''),offMin:pat.rest==null?'':intOr(pat.rest,''),maxLoad:p.maxTotal==null?'':p.maxTotal,maxWeek:p.maxWeek==null?'':p.maxWeek})});
   const cad=ds.cadence||{};const gap=intOr(cad.gapDays,2);
   w.rules.runMax=gap>=2?1:0;w.rules.offMin=gap>=2?gap-1:0;
   w.rules.perDay=1;w.rules.weekStart=6;
   w.rules.rankGate=ds.critMode==='require'?'lead':'off';w.rules.rankTol=25;
   if(cad.mode==='strict')w.rules.mode='strict';
+  (Array.isArray(ds.holidays)?ds.holidays:[]).filter(validISO).forEach(iso=>{w.overrides[iso]={on:false,n:0,focus:'auto'}});
   const d=new Date();w.scope={mode:'month',start:fISO(new Date(d.getFullYear(),d.getMonth(),1)),end:''};
+  const R=refResolver(w);
+  w.routes=(Array.isArray(o.routes)?o.routes:[]).map(r=>({id:uid('t'),a:R('loc',r.from!=null?r.from:r.a),b:R('loc',r.to!=null?r.to:r.b),km:Math.max(0,num(r.km,0))})).filter(r=>r.a&&r.b&&r.a!==r.b);
+  const se=o.settings&&typeof o.settings==='object'?o.settings:{};
+  if(se.rules)Object.assign(w.rules,se.rules);
+  if(se.weights)Object.assign(w.weights,se.weights);
+  if(se.useW)Object.assign(w.useW,se.useW);
+  if(se.engine)Object.assign(w.engine,se.engine);
+  if(se.sizing)Object.assign(w.sizing,se.sizing);
+  if(se.unit)w.unit=se.unit;
+  if(Array.isArray(se.week))w.week=normWeek(se.week);
+  if(se.categories&&typeof se.categories==='object')for(const k in se.categories){const c=w.categories.find(x=>x.id==='c_'+k||x.name===k);if(c)Object.assign(c,se.categories[k])}
+  if(Array.isArray(se.goals))w.goals=resolveGoals(w,se.goals);
+  const book=o.rulebook||se.rulebook;
+  if(Array.isArray(book))w.book=resolveBook(w,book);
   syncLoc(w);
   return normalize(w);
 }
+function mergeDataset(old,nw){
+  const remap={};
+  const match=(oa,na)=>na.forEach(n=>{const o=oa.find(x=>x.id===n.id)||oa.find(x=>x.name===n.name);if(o&&o.id!==n.id)remap[n.id]=o.id});
+  match(old.roles,nw.roles);match(old.categories,nw.categories);match(old.locations||[],nw.locations);match(old.sites,nw.sites);match(old.people,nw.people);
+  const R=id=>remap[id]||id;
+  const rk=o=>{const x={};for(const k in o)x[R(k)]=o[k];return x};
+  nw.roles.forEach(r=>r.id=R(r.id));
+  nw.categories.forEach(c=>{c.id=R(c.id);c.staff=rk(c.staff)});
+  nw.locations.forEach(l=>l.id=R(l.id));
+  nw.sites.forEach(s=>{s.id=R(s.id);s.cat=R(s.cat);s.loc=R(s.loc)});
+  nw.people.forEach(p=>{p.id=R(p.id);p.roles=p.roles.map(R);p.homeLoc=R(p.homeLoc);p.rankBy=rk(p.rankBy);p.bans=p.bans.map(R);p.likes=p.likes.map(R)});
+  (nw.routes||[]).forEach(r=>{r.a=R(r.a);r.b=R(r.b)});
+  const out=clone(old);
+  out.roles=nw.roles.map(r=>{const o=byId(old.roles,r.id);return o?Object.assign({},r,{name:o.name,color:o.color}):r});
+  const oldExtraCats=old.categories.filter(c=>!nw.categories.some(n=>n.id===c.id)&&old.sites.some(s=>s.cat===c.id&&!nw.sites.some(n=>n.id===s.id)));
+  out.categories=nw.categories.map(c=>{const o=byId(old.categories,c.id);return o?clone(o):c}).concat(oldExtraCats.map(clone));
+  out.locations=nw.locations;
+  const uniq=a=>Array.from(new Set(a));
+  out.sites=nw.sites.map(s=>{const o=byId(old.sites,s.id);if(!o)return s;return Object.assign({},s,{days:o.days,blackout:o.blackout,zone:o.zone,note:o.note,weight:o.weight,active:s.active&&o.active,minV:o.minV!==''?o.minV:s.minV,maxV:o.maxV!==''?o.maxV:s.maxV})});
+  out.people=nw.people.map(p=>{const o=byId(old.people,p.id);if(!o)return p;return Object.assign({},p,{days:o.days,off:uniq(o.off.concat(p.off)),avoid:o.avoid,pair:o.pair,likes:uniq(o.likes.concat(p.likes)),bans:uniq(o.bans.concat(p.bans)),
+    maxLoad:o.maxLoad!==''?o.maxLoad:p.maxLoad,maxWeek:o.maxWeek!==''?o.maxWeek:p.maxWeek,runMax:o.runMax!==''?o.runMax:p.runMax,offMin:o.offMin!==''?o.offMin:p.offMin,pref:o.pref!=='none'?o.pref:p.pref,active:p.active&&o.active})});
+  out.routes=(nw.routes||[]).length?nw.routes:(old.routes||[]);
+  out.book=(old.book||[]).length?old.book:(nw.book||[]);
+  out.goals=old.goals.length?old.goals:nw.goals;
+  out.source=nw.source||old.source;
+  out.updated=Date.now();
+  syncLoc(out);
+  return normalize(out);
+}
+function toDataset(ws){
+  const ln=id=>{const l=byId(ws.locations||[],id);return l?l.name:''};
+  const kindOf=cid=>/^c_/.test(cid)?cid.slice(2):String((byId(ws.categories,cid)||{}).name||cid).toLowerCase();
+  const pools={};ws.roles.forEach(r=>{const k=r.id.replace(/^r_/,'');const seats={};ws.categories.forEach(c=>{if(c.planned)seats[kindOf(c.id)]=c.staff[r.id]||0});pools[k]={id:k,name:r.name,color:r.color,seats}});
+  const dist={};(ws.locations||[]).slice().sort((a,b)=>a.km-b.km).forEach(l=>dist[l.name]=l.km);
+  const crit={};ws.sites.forEach(s=>crit[s.name]=s.crit);
+  const cats={};ws.categories.forEach(c=>{const k=kindOf(c.id);cats[k]=Array.from(new Set(ws.sites.filter(s=>s.cat===c.id).map(s=>s.tag).filter(Boolean)))});
+  const pc=ws.categories.filter(c=>c.planned);
+  const weekdays=[];ws.week.forEach((d,i)=>{if(d.on)weekdays.push(i)});
+  return {
+    format:'cadence-dataset',version:2,exported:new Date().toISOString(),name:ws.name,terms:ws.terms,
+    location_distances_km:dist,categories:cats,facility_criticality:crit,pools,
+    default_settings:{weekdays,maxVisitsPerDay:Math.max(1,...ws.week.map(d=>d.n)),holidays:Object.keys(ws.overrides).filter(k=>ws.overrides[k].on===false),critMode:ws.rules.rankGate!=='off'?'require':'prefer',cadence:{mode:ws.rules.mode==='strict'?'strict':'prefer',gapDays:ws.rules.runMax===1?ws.rules.offMin+1:1}},
+    people:ws.people.map(p=>{const o={id:p.id,name:p.name,gender:p.gender||'',pool:p.roles.length>1&&p.roles.length===ws.roles.length?'any':(p.roles[0]||'').replace(/^r_/,''),rank:p.rank,weight:p.weight,active:p.active,originLocationId:ln(p.homeLoc),unavailable:p.off.slice(),blockedFacilities:p.bans.slice(),distanceAffinity:p.pref==='far'?1:p.pref==='near'?-1:0,workWeekdays:p.days.every(Boolean)?null:p.days.map((x,i)=>x?i:-1).filter(i=>i>=0)};
+      pc.forEach(c=>{if(p.rankBy[c.id]!=null){const k=kindOf(c.id);o['rank'+k.charAt(0).toUpperCase()+k.slice(1)]=p.rankBy[c.id]}});
+      if(p.runMax!==''||p.offMin!=='')o.pattern={work:p.runMax===''?null:p.runMax,rest:p.offMin===''?null:p.offMin};
+      if(p.maxLoad!=='')o.maxTotal=p.maxLoad;if(p.maxWeek!=='')o.maxWeek=p.maxWeek;if(p.note)o.title=p.note;return o}),
+    facilities:ws.sites.map(s=>{const o={id:s.id,name:s.name,category:s.tag||'',location:ln(s.loc),kind:kindOf(s.cat),weight:s.weight,crit:s.crit};if(!s.active)o.active=false;if(s.minV!=='')o.min=s.minV;if(s.maxV!=='')o.max=s.maxV;return o}),
+    routes:(ws.routes||[]).map(r=>({from:ln(r.a),to:ln(r.b),km:r.km})),
+    settings:{rules:ws.rules,weights:ws.weights,useW:ws.useW,engine:{seed:ws.engine.seed,quality:ws.engine.quality,runs:ws.engine.runs},sizing:ws.sizing,unit:ws.unit,week:ws.week,
+      goals:ws.goals.map(g=>({on:g.on,per:g.per,scope:g.scope,ref:g.scope==='cat'?kindOf(g.ref):g.scope==='loc'?ln(g.ref):g.scope==='site'?((byId(ws.sites,g.ref)||{}).name||g.ref):g.ref,op:g.op,n:g.n}))},
+    rulebook:bookForExport(ws)
+  };
+}
 
+function locDist(ws){
+  const L={};(ws.locations||[]).forEach(l=>L[l.id]=+l.km||0);
+  const R={};(ws.routes||[]).forEach(r=>{R[r.a+'|'+r.b]=+r.km;R[r.b+'|'+r.a]=+r.km});
+  return (la,ka,lb,kb)=>{if(la&&lb){if(la===lb)return 0;const x=R[la+'|'+lb];if(x!=null)return x}return Math.abs((la&&L[la]!=null?L[la]:ka)-(lb&&L[lb]!=null?L[lb]:kb))};
+}
 function syncLoc(ws){
   const m={};(ws.locations||[]).forEach(l=>m[l.id]=l);
   ws.sites.forEach(s=>{if(s.loc){const l=m[s.loc];if(l)s.km=+l.km||0;else s.loc=''}});
@@ -200,6 +361,8 @@ function normalize(o){
   const cIds=new Set(w.categories.map(c=>c.id));
   w.locations=(Array.isArray(o.locations)?o.locations:[]).map((l,i)=>({id:okId(l.id,'l'),name:String(l.name||'Location '+(i+1)),km:Math.max(0,num(l.km,0)),unknown:!!l.unknown}));
   const lIds=new Set(w.locations.map(l=>l.id));
+  w.routes=(Array.isArray(o.routes)?o.routes:[]).filter(r=>r&&lIds.has(r.a)&&lIds.has(r.b)&&r.a!==r.b).map(r=>({id:typeof r.id==='string'&&r.id?r.id:uid('t'),a:r.a,b:r.b,km:Math.max(0,num(r.km,0))}));
+  w.source=o.source&&typeof o.source==='object'?{url:String(o.source.url||''),hash:String(o.source.hash||''),at:+o.source.at||0,auto:o.source.auto!==false}:null;
   w.sites=o.sites.map((s,i)=>({id:okId(s.id,'s'),name:String(s.name||'Site '+(i+1)),cat:cIds.has(s.cat)?s.cat:(w.categories[0]&&w.categories[0].id),
     km:Math.max(0,num(s.km,0)),loc:lIds.has(s.loc)?s.loc:'',crit:lvl(s.crit,50),tag:String(s.tag||''),zone:String(s.zone||''),weight:clamp(num(s.weight,1),.1,3),minV:s.minV===''||s.minV==null?'':Math.max(0,intOr(s.minV,0)),maxV:s.maxV===''||s.maxV==null?'':Math.max(0,intOr(s.maxV,0)),
     days:arr7(s.days,true),blackout:Array.isArray(s.blackout)?s.blackout.filter(validISO):[],active:s.active!==false,note:String(s.note||'')}));
@@ -209,9 +372,11 @@ function normalize(o){
     home:Math.max(0,num(p.home,0)),homeLoc:lIds.has(p.homeLoc)?p.homeLoc:'',rank:lvl(p.rank,50),rankBy:rb,gender:String(p.gender||''),note:String(p.note||''),
     pref:['near','far','none'].includes(p.pref)?p.pref:'none',weight:clamp(num(p.weight,1),.1,3),
     days:arr7(p.days,true),off:Array.isArray(p.off)?p.off.filter(validISO):[],maxLoad:p.maxLoad===''||p.maxLoad==null?'':Math.max(0,intOr(p.maxLoad,0)),maxWeek:p.maxWeek===''||p.maxWeek==null?'':Math.max(0,intOr(p.maxWeek,0)),
+    runMax:p.runMax===''||p.runMax==null?'':clamp(intOr(p.runMax,0),0,14),offMin:p.offMin===''||p.offMin==null?'':clamp(intOr(p.offMin,0),0,14),
     avoid:Array.isArray(p.avoid)?p.avoid:[],pair:Array.isArray(p.pair)?p.pair:[],likes:(Array.isArray(p.likes)?p.likes:[]).filter(x=>sIds.has(x)),bans:(Array.isArray(p.bans)?p.bans:[]).filter(x=>sIds.has(x)),active:p.active!==false}});
   const pIds=new Set(w.people.map(p=>p.id));
   w.people.forEach(p=>{p.avoid=p.avoid.filter(x=>pIds.has(x)&&x!==p.id);p.pair=p.pair.filter(x=>pIds.has(x)&&x!==p.id)});
+  w.book=(Array.isArray(o.book)?o.book:[]).map(normRule);
   w.goals=(Array.isArray(o.goals)?o.goals:[]).map(g=>({id:okId(g.id,'g'),on:g.on!==false,per:g.per==='total'?'total':'each',scope:['all','cat','loc','tag','site','crit'].includes(g.scope)?g.scope:'all',ref:String(g.ref||''),op:['min','exact','max'].includes(g.op)?g.op:'min',n:clamp(intOr(g.n,1),0,9999)}));
   const sz=o.sizing||{};w.sizing={mode:['rhythm','total','goals'].includes(sz.mode)?sz.mode:'rhythm',total:clamp(intOr(sz.total,40),0,9999)};
   w.week=normWeek(o.week);
@@ -333,8 +498,8 @@ function planDays(ws,keepZero){
 function fpOf(ws){
   return fnv(JSON.stringify([ws.roles.map(r=>r.id),ws.categories.map(c=>[c.id,c.staff,c.share,c.planned]),
     ws.sites.map(s=>[s.id,s.cat,s.km,s.loc,s.crit,s.tag,s.zone,s.weight,s.minV,s.maxV,s.days,s.blackout,s.active]),
-    ws.people.map(p=>[p.id,p.roles,p.home,p.rank,p.rankBy,p.pref,p.weight,p.days,p.off,p.maxLoad,p.maxWeek,p.avoid,p.pair,p.likes,p.bans,p.active]),
-    ws.goals,ws.sizing,ws.week,ws.overrides,ws.scope,ws.rules,ws.weights,ws.useW,ws.engine.seed,ws.engine.quality,ws.engine.runs]));
+    ws.people.map(p=>[p.id,p.roles,p.home,p.homeLoc,p.rank,p.rankBy,p.gender,p.pref,p.weight,p.days,p.off,p.maxLoad,p.maxWeek,p.runMax,p.offMin,p.avoid,p.pair,p.likes,p.bans,p.active]),
+    ws.book||[],ws.routes||[],ws.goals,ws.sizing,ws.week,ws.overrides,ws.scope,ws.rules,ws.weights,ws.useW,ws.engine.seed,ws.engine.quality,ws.engine.runs]));
 }
 function fpWithLocks(ws){return fnv(fpOf(ws)+JSON.stringify(ws.locks))}
 
@@ -450,8 +615,16 @@ function compile(ws){
   if(!C)warn.push({k:'nosites'});
   roles.forEach((r,ri)=>{if(demand[ri]>0&&!roleMembers[ri].length)warn.push({k:'norole',r:r.id})});
   const nWeeks=new Set(dayWeek).size||1;
+  const pRun=people.map(p=>p.runMax===''?ws.rules.runMax:+p.runMax),pOff=people.map(p=>p.offMin===''?(p.runMax===''?ws.rules.offMin:Math.max(1,ws.rules.offMin)):+p.offMin);
   const capOf=pi=>{let a=0;for(let d=0;d<D;d++)a+=pAvail[pi*D+d];let c=a*(ws.rules.perDay||10);const p=people[pi];if(p.maxLoad!=='')c=Math.min(c,+p.maxLoad);if(p.maxWeek!=='')c=Math.min(c,+p.maxWeek*nWeeks);
-    const rm=ws.rules.runMax,om=ws.rules.offMin;if(rm>0&&span>0)c=Math.min(c,Math.ceil(span*rm/(rm+Math.max(1,om)))*(ws.rules.perDay||1));return c};
+    const rm=pRun[pi],om=pOff[pi];if(rm>0&&span>0)c=Math.min(c,Math.ceil(span*rm/(rm+Math.max(1,om)))*(ws.rules.perDay||1));return c};
+  const bk=compileBook(ws,people,sites,days,cats,roles);
+  bk.warn.forEach(x=>warn.push(x));
+  const dist=locDist(ws);
+  const sDist=new Float64Array(S*S);
+  for(let a=0;a<S;a++)for(let b=a+1;b<S;b++){const x=dist(sites[a].loc,+sites[a].km||0,sites[b].loc,+sites[b].km||0);sDist[a*S+b]=x;sDist[b*S+a]=x}
+  const pSiteD=new Float64Array(N*S);
+  people.forEach((p,pi)=>sites.forEach((s,si)=>{pSiteD[pi*S+si]=p.homeLoc?dist(p.homeLoc,+p.home||0,s.loc,+s.km||0):Math.abs((+p.home||0)-(+s.km||0))}));
   roles.forEach((r,ri)=>{if(!roleMembers[ri].length)return;let cap=0;roleMembers[ri].forEach(pi=>{cap+=capOf(pi)/people[pi].roles.filter(x=>rIx[x]!==undefined).length});cap=Math.floor(cap);if(demand[ri]>cap+.01)warn.push({k:'capacity',r:r.id,need:Math.round(demand[ri]),cap})});
   cats.forEach((c,ci)=>{const mins=sum(sites.filter(s=>s.cat===c.id).map(s=>s.minV===''?0:+s.minV));if(mins>catTarget[ci]+.5)warn.push({k:'minover',c:c.id,need:mins,have:Math.round(catTarget[ci])})});
   if(goalsOn&&ws.sizing.mode!=='goals'){const gn=goalNeed(ws);if(gn>V)warn.push({k:'goalshort',need:gn,have:V})}
@@ -459,7 +632,7 @@ function compile(ws){
     const bad=[];sites.forEach((s,si)=>{const cr=sCrit[si];if(!cr)return;const ci=sCat[si];let best=-1;for(let p=0;p<N;p++)best=Math.max(best,pRankC[p*C+ci]);if(best<cr-ws.rules.rankTol)bad.push(s.name)});
     if(bad.length)warn.push({k:'rankgap',n:bad.length,ex:bad.slice(0,3).join(', ')});
   }
-  if(ws.rules.runMax===1&&ws.rules.offMin>0){
+  if(ws.rules.runMax===1&&ws.rules.offMin>0&&pRun.every(x=>x===1)){
     roles.forEach((r,ri)=>{const mem=roleMembers[ri];if(!mem.length)return;
       for(let i=0;i+1<D;i++){if(dayNumA[i+1]-dayNumA[i]>ws.rules.offMin)continue;
         const nA=days[i].n,nB=days[i+1].n;let minNeed=Infinity;for(let c=0;c<C;c++)if(catTarget[c]>0)minNeed=Math.min(minNeed,need[c*R+ri]);if(!isFinite(minNeed))minNeed=0;
@@ -472,12 +645,74 @@ function compile(ws){
     gMin,gMax,grpN,grpOp,siteGrp,sCrit,pRankC,
     pAvail,pHome:people.map(p=>+p.home||0),pPref:people.map(p=>p.pref==='near'?1:p.pref==='far'?2:0),pTarget,
     pMaxLoad:people.map(p=>p.maxLoad===''?-1:+p.maxLoad),pMaxWeek:people.map(p=>p.maxWeek===''?-1:+p.maxWeek),pIdeal,rel,aff,
-    dayNum:dayNumA,dayWeek,dayFocus,roleMembers,w,
+    dayNum:dayNumA,dayWeek,dayFocus,roleMembers,w,pRun,pOff,sDist:Array.from(sDist),pSiteD:Array.from(pSiteD),
+    bkS:bk.bkS,bkSH:bk.bkSH,bkSR:bk.bkSR,bkD:bk.bkD,bkDH:bk.bkDH,bkDR:bk.bkDR,bkP:bk.bkP,bkPH:bk.bkPH,bkPR:bk.bkPR,team:bk.team,bookOn:bk.on,
     rules:{perDay:ws.rules.perDay,runMax:ws.rules.runMax,offMin:ws.rules.offMin,strict:ws.rules.mode==='strict',distinct:ws.rules.distinct,siteGap:ws.rules.siteGap,nearKm:ws.rules.nearKm,rankGate:gate,rankTol:ws.rules.rankTol},
     Dn,seed:ws.engine.seed,iters,runs:ws.engine.runs};
   const map={start,end,days:days.map(d=>({iso:d.iso,n:d.n,focus:d.cfg.focus})),visits,seats:seats.map(s=>({key:s.key,v:s.v,r:s.r,i:s.i})),
-    roles:roles.map(r=>r.id),cats:cats.map(c=>c.id),sites:sites.map(s=>s.id),people:people.map(p=>p.id),pTarget,catTarget,demand,sExp,grpGoal,gMin,gMax};
+    roles:roles.map(r=>r.id),cats:cats.map(c=>c.id),sites:sites.map(s=>s.id),people:people.map(p=>p.id),pTarget,catTarget,demand,sExp,grpGoal,gMin,gMax,book:bk.ids};
   return {P,map,warn};
+}
+
+const SOFT_SITE=1.2,SOFT_WITH_AV=3,SOFT_WITH_PR=.8,SOFT_TEAM=2;
+function compileBook(ws,people,sites,days,cats,roles){
+  const N=people.length,S=sites.length,D=days.length;
+  const out={bkS:null,bkSH:null,bkSR:null,bkD:null,bkDH:null,bkDR:null,bkP:null,bkPH:null,bkPR:null,team:[],ids:[],warn:[],on:false};
+  const list=(ws.book||[]).filter(r=>r.on);
+  if(!list.length||!N)return out;
+  const bw=ws.useW&&ws.useW.book===false?0:((ws.weights&&ws.weights.book!=null?ws.weights.book:50)/50);
+  const dows=days.map(d=>dowOf(d.iso));
+  const mk=n=>new Array(n).fill(0),mkR=n=>new Array(n).fill(-1);
+  list.forEach(r=>{
+    const ri=out.ids.length;out.ids.push(r.id);
+    const pm=people.map(p=>whoMatch(p,r.who));
+    const nP=pm.filter(Boolean).length;
+    const hard=isHard(r),soft=r.w*bw;
+    if(!nP){out.warn.push({k:'rulenone',b:r.id});return}
+    if(r.rel==='site'){
+      const sm=sites.map(s=>whatMatch(s,r.what));
+      if(!sm.some(Boolean)){out.warn.push({k:'rulenone',b:r.id});return}
+      if(!out.bkS){out.bkS=mk(N*S);out.bkSH=mk(N*S);out.bkSR=mkR(N*S)}
+      for(let p=0;p<N;p++){if(!pm[p])continue;for(let s=0;s<S;s++){
+        const i=p*S+s,hit=sm[s];
+        if(r.sense==='prefer'){if(hit&&soft)out.bkS[i]-=SOFT_SITE*soft}
+        else if(r.sense==='avoid'){if(hit&&soft){out.bkS[i]+=SOFT_SITE*soft;if(out.bkSR[i]<0)out.bkSR[i]=ri}}
+        else if((r.sense==='never'&&hit)||(r.sense==='only'&&!hit)){out.bkSH[i]++;out.bkSR[i]=ri}
+      }}
+      out.on=true;
+    }else if(r.rel==='day'){
+      const dm=dows.map(w=>!!r.what.v[w]);
+      if(!out.bkD){out.bkD=mk(N*D);out.bkDH=mk(N*D);out.bkDR=mkR(N*D)}
+      for(let p=0;p<N;p++){if(!pm[p])continue;for(let d=0;d<D;d++){
+        const i=p*D+d,hit=dm[d];
+        if(r.sense==='prefer'){if(hit&&soft)out.bkD[i]-=SOFT_SITE*soft}
+        else if(r.sense==='avoid'){if(hit&&soft){out.bkD[i]+=SOFT_SITE*soft;if(out.bkDR[i]<0)out.bkDR[i]=ri}}
+        else if((r.sense==='never'&&hit)||(r.sense==='only'&&!hit)){out.bkDH[i]++;out.bkDR[i]=ri}
+      }}
+      out.on=true;
+    }else if(r.rel==='with'){
+      const qm=people.map(p=>whoMatch(p,r.what));
+      if(!out.bkP){out.bkP=mk(N*N);out.bkPH=mk(N*N);out.bkPR=mkR(N*N)}
+      const set=(a,b,fn)=>{fn(a*N+b);fn(b*N+a)};
+      for(let a=0;a<N;a++){if(!pm[a])continue;for(let b=0;b<N;b++){
+        if(a===b)continue;const hit=qm[b];
+        if(r.sense==='prefer'){if(hit&&soft)set(a,b,i=>out.bkP[i]-=SOFT_WITH_PR*soft/2)}
+        else if(r.sense==='avoid'){if(hit&&soft)set(a,b,i=>{out.bkP[i]+=SOFT_WITH_AV*soft/2;if(out.bkPR[i]<0)out.bkPR[i]=ri})}
+        else if((r.sense==='never'&&hit)||(r.sense==='only'&&!hit))set(a,b,i=>{out.bkPH[i]=1;out.bkPR[i]=ri});
+      }}
+      out.on=true;
+    }else if(r.rel==='team'){
+      const sm=sites.map(s=>whatMatch(s,r.what));
+      if(!sm.some(Boolean)){out.warn.push({k:'rulenone',b:r.id});return}
+      out.team.push({ri,pm:pm.map(x=>x?1:0),sm:sm.map(x=>x?1:0),op:r.op==='min'?0:1,n:r.n,hard:hard?1:0,w:SOFT_TEAM*soft});
+      if(r.op==='min'&&r.n>0){
+        const seatsMax=sum(ws.categories.filter(c=>c.planned).map(c=>sum(Object.values(c.staff||{}))));
+        if(r.n>Math.max(1,seatsMax))out.warn.push({k:'ruleteam',b:r.id,n:r.n,have:seatsMax});
+      }
+      out.on=true;
+    }
+  });
+  return out;
 }
 
 function csvParse(text){
@@ -504,5 +739,6 @@ G.MV={$,$$,esc,uid,clamp,sum,avg,num,intOr,byId,clone,fnv,gini,mulberry32,
   pISO,fISO,addISO,dowOf,dayNum,diffDays,todayISO,validISO,weekStartOf,daysIn,
   COLORS,LEVELS,WEIGHT_KEYS,defaultWeights,defaultUseW,defaultRules,defaultEngine,TERM_DEFAULT,
   TEMPLATES,TEMPLATE_ORDER,blankWS,mkRole,mkCat,mkLoc,mkSite,mkPerson,mkGoal,normalize,migrateLegacy,fromDataset,syncLoc,
-  Store,rangeOf,dayCfg,planDays,planTotal,plannable,goalSites,goalNeed,fpOf,fpWithLocks,compile,csvParse,csvRow};
+  Store,rangeOf,dayCfg,planDays,planTotal,plannable,goalSites,goalNeed,fpOf,fpWithLocks,compile,csvParse,csvRow,
+  SENSES,WHO_K,WHAT_K,RELS,FLIP,isHard,normRule,mkRule,whoMatch,whatMatch,resolveBook,resolveGoals,bookForExport,toDataset,mergeDataset,locDist,arr7};
 })(window);

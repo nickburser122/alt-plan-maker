@@ -8,7 +8,9 @@ const APP={ix:null,prefs:{},ws:null,view:'plan',selDay:null,f:{},hist:{u:[],r:[]
 G.APP=APP;
 let compiledCache=null,saveT=null,solveT=null,pendingRender=false,jobId=0,worker=null;
 let workerOK=typeof Worker!=='undefined'&&location.protocol!=='file:';
-let pop=null,modal=null,armed=null,dpkState=null,colorTarget=null,expState=null,palState=null;
+let pop=null,modal=null,armed=null,dpkState=null,colorTarget=null,expState=null,palState=null,eqState=null,jsonState=null;
+const CFG_DEFAULT={dataset:'data/complete_data.json',autoCheck:true,ruleTemplates:[]};
+APP.config=Object.assign({},CFG_DEFAULT);
 
 APP.compiled=function(){
   const key=fpWithLocks(APP.ws);
@@ -196,7 +198,7 @@ function openModal(html,cls){
   document.body.appendChild(modal);document.documentElement.classList.add('modal-open');
   return modal;
 }
-function closeModal(){if(modal){modal.remove();modal=null;document.documentElement.classList.remove('modal-open')}expState=null;palState=null}
+function closeModal(){if(modal){modal.remove();modal=null;document.documentElement.classList.remove('modal-open')}expState=null;palState=null;eqState=null;jsonState=null}
 
 function explainAt(anchor,q){
   const D=V.derive();if(!D)return;
@@ -355,7 +357,8 @@ $('#fileIn').addEventListener('change',e=>{
     const txt=String(rd.result||'');
     if(fileMode==='wsJson'){
       try{const o=JSON.parse(txt);let w;
-        if(o.location_distances_km||o.facility_criticality||(Array.isArray(o.facilities)&&o.facilities[0]&&o.facilities[0].location!==undefined))w=M.fromDataset(o,file.name.replace(/\.(json|txt)+$/i,''));
+        if(o.location_distances_km||o.facility_criticality||(Array.isArray(o.facilities)&&o.facilities[0]&&o.facilities[0].location!==undefined)){w=M.fromDataset(o,o.name||file.name.replace(/\.(json|txt)+$/i,''));w.source={url:'',hash:M.fnv(txt),at:Date.now(),auto:false}}
+        else if(Array.isArray(o)||(o.rulebook&&!o.sites)){const list=Array.isArray(o)?o:o.rulebook;commit(ws=>{ws.book=(ws.book||[]).concat(M.resolveBook(ws,list))});toast(t('bookApplied',{n:list.length}));return}
         else if(Array.isArray(o.facilities)&&Array.isArray(o.people))w=M.migrateLegacy(o);else w=M.normalize(o.workspace||o);
         if(APP.ix.list.some(x=>x.id===w.id))w.id=uid('w');
         w.updated=Date.now();saveNow();switchTo(w);toast(t('imported'));
@@ -416,8 +419,15 @@ function paletteItems(q){
     {label:t('loadDataset'),kind:t('palCmd'),icon:'ic-layers',run:loadDataset},
     {label:t('pr_once'),kind:t('presets'),icon:'ic-target',run:()=>applyPreset('once')},
     {label:t('pr_twice'),kind:t('presets'),icon:'ic-target',run:()=>applyPreset('twice')},
-    {label:t('kbdT'),kind:t('palCmd'),icon:'ic-keyboard',run:()=>openModal(V.kbdModal())}
+    {label:t('kbdT'),kind:t('palCmd'),icon:'ic-keyboard',run:()=>openModal(V.kbdModal())},
+    {label:t('bAdd'),kind:t('bookT'),icon:'ic-flip',run:()=>{APP.view='rules';render();addRule('__blank')}},
+    {label:t('bJson'),kind:t('bookT'),icon:'ic-code',run:()=>openJson('book')},
+    {label:t('eqExport'),kind:t('kModel'),icon:'ic-sigma',run:openEq},
+    {label:t('eqCopy'),kind:t('kModel'),icon:'ic-copy',run:()=>copyText(V.eqText('text'))},
+    {label:t('srcKeep'),kind:t('kSource'),icon:'ic-undo',run:()=>refreshSource(true)},
+    {label:t('srcExportB'),kind:t('kSource'),icon:'ic-down',run:()=>act.dsExport()}
   ];
+  (APP.config.ruleTemplates||[]).forEach((x,i)=>cmds.push({label:t('bAdd')+': '+((x.label&&(x.label[I.lang()]||x.label.en))||'#'+(i+1)),kind:t('bookT'),icon:'ic-flip',run:()=>{APP.view='rules';render();addRule(String(i))}}));
   [['plan','tabPlan','ic-cal'],['sites','tabSites','ic-build'],['people','tabPeople','ic-users'],['rules','tabRules','ic-sliders'],['model','tabModel','ic-sigma'],['insights','tabInsights','ic-chart'],['workspace','tabWs','ic-layers']].forEach(([v,l,i])=>cmds.push({label:t('goTo')+' '+t(l),kind:t('palCmd'),icon:i,run:()=>{APP.view=v;render()}}));
   M.TEMPLATE_ORDER.forEach(k=>cmds.push({label:t('newWs')+': '+t('tpl_'+k),kind:t('palCmd'),icon:'ic-layers',run:()=>newWorkspace(k)}));
   APP.ix.list.filter(x=>x.id!==ws.id).forEach(x=>cmds.push({label:t('open_')+': '+x.name,kind:t('tabWs'),icon:'ic-layers',run:()=>{const w=Store.load(x.id);if(w)switchTo(w)}}));
@@ -484,7 +494,65 @@ function applyBind(bd,ds,v){
     case 'siteLoc':APP.f.siteLoc=v;APP.f.sitePage=0;render();break;
     case 'goal':commit(ws=>{const g=byId(ws.goals,ds.id);if(!g)return;g[ds.f]=v;if(ds.f==='scope'){g.ref=v==='crit'?'75':''}});break;
     case 'preset':applyPreset(v);break;
+    case 'book':commit(ws=>{const r=byId(ws.book,ds.id);if(!r)return;const f=ds.f,side=ds.side;
+      if(f==='rel'){r.rel=v;r.what=v==='day'?{k:'dow',v:[false,false,false,false,false,true,true]}:{k:'all',v:''}}
+      else if(side){r[side][f]=v;if(f==='k')r[side].v=({rankGe:'75',rankLe:'25',critGe:'75',kmGe:'40',kmLe:'15',gender:'f'})[v]||''}
+      else r[f]=v;
+      Object.assign(r,M.normRule(r))});break;
+    case 'bookAdd':addRule(v);break;
+    case 'route':commit(ws=>{const r=byId(ws.routes,ds.id);if(r){r[ds.f]=v;if(r.a===r.b)ws.routes=ws.routes.filter(x=>x!==r)}});break;
   }
+}
+function addRule(v,o){
+  let id=null;
+  commit(ws=>{let r;
+    if(o)r=M.mkRule(o);
+    else if(v&&v!=='__blank'){const tp=(APP.config.ruleTemplates||[])[+v];r=tp?M.resolveBook(ws,[tp.rule])[0]:M.mkRule()}
+    else r=M.mkRule();
+    ws.book=ws.book||[];ws.book.unshift(r);id=r.id});
+  setTimeout(()=>{const el=document.querySelector('[data-rid="'+id+'"]');if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1400)}},60);
+  return id;
+}
+function openEq(){eqState=Object.assign({fmt:'text'},APP.prefs.eq||{});const st=eqState;openModal(V.eqModal(st));eqState=st;refreshEq()}
+function refreshEq(){if(!modal||!eqState)return;modal.innerHTML=V.eqModal(eqState);const pv=modal.querySelector('#eqPrev');pv.textContent=V.eqText(eqState.fmt);APP.prefs.eq={fmt:eqState.fmt}}
+const EQX={text:['txt','text/plain;charset=utf-8'],latex:['tex','application/x-tex'],md:['md','text/markdown;charset=utf-8'],json:['json','application/json']};
+function openJson(kind){
+  const ws=APP.ws;let obj,title,note;
+  if(kind==='book'){obj=M.bookForExport(ws);title='bookJsonT';note='bookJsonN'}
+  else{obj=M.toDataset(ws);title='dsJsonT';note='dsJsonN'}
+  jsonState={kind,title,note,apply:true};const st=jsonState;
+  openModal(V.jsonModal(st));jsonState=st;
+  const ta=$('#jsonEd');ta.value=JSON.stringify(obj,null,2);
+  ta.addEventListener('input',()=>{const er=$('#jsonErr');try{JSON.parse(ta.value);er.textContent='';er.className='jsonerr'}catch(e){er.textContent=e.message;er.className='jsonerr on'}});
+}
+function applyJson(){
+  const ta=$('#jsonEd');if(!ta||!jsonState)return;let o;
+  try{o=JSON.parse(ta.value)}catch(e){toast(t('invalid',{e:e.message}),'warn');return}
+  try{
+    if(jsonState.kind==='book'){const list=Array.isArray(o)?o:(o.rulebook||[]);commit(ws=>{ws.book=M.resolveBook(ws,list)});toast(t('bookApplied',{n:list.length}))}
+    else{const nw=M.fromDataset(o,APP.ws.name);nw.source=APP.ws.source;const w=M.mergeDataset(APP.ws,nw);pushHist();APP.ws=w;compiledCache=null;saveNow();render();solve({quiet:true});toast(t('imported'))}
+    closeModal();
+  }catch(e){toast(t('invalid',{e:e.message}),'warn')}
+}
+async function fetchText(url){const r=await fetch(url,{cache:'no-cache'});if(!r.ok)throw new Error(r.status+' '+url);return await r.text()}
+async function checkSource(){
+  const ws=APP.ws,src=ws.source;
+  if(!src||src.auto===false||location.protocol==='file:'||APP.config.autoCheck===false)return;
+  try{const txt=await fetchText(src.url||APP.config.dataset);const h=M.fnv(txt);
+    if(h!==src.hash&&APP.ws===ws){APP.srcUpdate={hash:h};if(APP.view==='workspace')render();
+      toast(t('srcChanged'),'warn',{label:t('srcKeepShort'),fn:()=>refreshSource(true)})}
+  }catch(e){}
+}
+async function refreshSource(keep){
+  const old=APP.ws,url=(old.source&&old.source.url)||APP.config.dataset;
+  try{
+    const txt=await fetchText(url);const o=JSON.parse(txt);
+    const nw=M.fromDataset(o,old.name);nw.source={url,hash:M.fnv(txt),at:Date.now(),auto:!old.source||old.source.auto!==false};
+    let w;
+    if(keep)w=M.mergeDataset(old,nw);else{w=nw;w.id=old.id;w.name=old.name;w.snapshots=old.snapshots}
+    pushHist();APP.ws=w;APP.srcUpdate=null;compiledCache=null;saveNow();render();solve({quiet:true});
+    toast(t(keep?'srcMerged':'srcReplaced'));
+  }catch(e){toast(t('invalid',{e:e.message}),'warn')}
 }
 function applyPreset(k){
   commit(ws=>{
@@ -496,13 +564,43 @@ function applyPreset(k){
 }
 async function loadDataset(keepView){
   try{
-    const r=await fetch('data/complete_data.json');if(!r.ok)throw new Error(r.status);
-    const o=await r.json();const w=M.fromDataset(o,t('datasetName'));
+    const url=APP.config.dataset||'data/complete_data.json';
+    const txt=await fetchText(url);
+    const o=JSON.parse(txt);const w=M.fromDataset(o,o.name||t('datasetName'));
+    w.source={url,hash:M.fnv(txt),at:Date.now(),auto:true};
     saveNow();switchTo(w);if(keepView!==true)APP.view='plan';render();toast(t('imported'));
   }catch(e){toast(t('invalid',{e:e.message}),'warn')}
 }
 const act={
   palette:openPalette,undo,redo,
+  jump(b){const el=document.getElementById(b.dataset.to);if(el){el.scrollIntoView({behavior:'smooth',block:'start'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1200)}},
+  bookOn(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(r)r.on=!r.on})},
+  bookAllOn(){const all=APP.ws.book.every(r=>r.on);commit(ws=>{ws.book.forEach(r=>r.on=!all)})},
+  bookFlip(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(!r)return;if(r.rel==='team')r.op=r.op==='min'?'max':'min';else r.sense=M.FLIP[r.sense]});toast(t('bFlipped'))},
+  bookHard(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(!r)return;r.sense=({prefer:'only',avoid:'never',only:'prefer',never:'avoid'})[r.sense];Object.assign(r,M.normRule(r))})},
+  bookDup(b){commit(ws=>{const i=ws.book.findIndex(r=>r.id===b.dataset.id);if(i<0)return;const c=M.normRule(Object.assign(clone(ws.book[i]),{id:''}));ws.book.splice(i+1,0,c)})},
+  bookDel(b){armOr(b,'bd'+b.dataset.id,()=>commit(ws=>{ws.book=ws.book.filter(r=>r.id!==b.dataset.id)}))},
+  bookDow(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(r&&r.rel==='day')r.what.v[+b.dataset.i]=!r.what.v[+b.dataset.i]})},
+  bookN(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(r)r.n=clamp(r.n+ +b.dataset.d,0,20)},{co:'bn'+b.dataset.id})},
+  bookJson(){openJson('book')},
+  bookForPerson(b){APP.view='rules';render();addRule(null,{who:{k:'person',v:b.dataset.id},rel:'site',sense:'avoid'})},
+  personGender(b){commit(ws=>{const p=byId(ws.people,b.dataset.id);if(p)p.gender=b.dataset.v})},
+  personPat(b){commit(ws=>{const p=byId(ws.people,b.dataset.id);if(!p)return;if(p.runMax===''){p.runMax=Math.max(1,ws.rules.runMax||1);p.offMin=Math.max(1,ws.rules.offMin||1)}else{p.runMax='';p.offMin=''}})},
+  personRun(b){commit(ws=>{const p=byId(ws.people,b.dataset.id);if(!p)return;const k=b.dataset.k;p[k]=clamp((+p[k]||0)+ +b.dataset.d,k==='runMax'?1:0,14)},{co:'pr'+b.dataset.id+b.dataset.k})},
+  addRoute(){commit(ws=>{const L0=(ws.locations||[]).slice().sort((x,y)=>x.km-y.km);if(L0.length<2)return;ws.routes=ws.routes||[];const a=L0[1],b=L0[L0.length-1];ws.routes.unshift({id:uid('t'),a:a.id,b:b.id,km:Math.round(Math.abs(b.km-a.km))})})},
+  delRoute(b){commit(ws=>{ws.routes=ws.routes.filter(r=>r.id!==b.dataset.id)})},
+  eqExport:openEq,
+  eqFmt(b){eqState.fmt=b.dataset.v;refreshEq()},
+  eqCopy(){copyText(V.eqText(eqState.fmt))},
+  eqCopyQuick(){copyText(V.eqText(APP.prefs.eq&&APP.prefs.eq.fmt||'text'))},
+  eqDownload(){const e=EQX[eqState.fmt];dl(slug(APP.ws.name)+'-objective.'+e[0],V.eqText(eqState.fmt),e[1])},
+  srcRefresh(b){refreshSource(b.dataset.keep==='1')},
+  srcAuto(){commit(ws=>{ws.source=ws.source||{url:APP.config.dataset,hash:'',at:0,auto:true};ws.source.auto=ws.source.auto===false},{solve:false});render()},
+  dsExport(){dl(slug(APP.ws.name)+'.dataset.json',JSON.stringify(M.toDataset(APP.ws),null,2),'application/json')},
+  dsJson(){openJson('dataset')},
+  jsonApply:applyJson,
+  jsonCopy(){const ta=$('#jsonEd');if(ta)copyText(ta.value)},
+  jsonDownload(){const ta=$('#jsonEd');if(ta)dl(slug(APP.ws.name)+(jsonState&&jsonState.kind==='book'?'.rulebook.json':'.dataset.json'),ta.value,'application/json')},
   dd(b){openDD(b)},
   ddPick(b){ddPick(+b.dataset.i)},
   loadDataset(){loadDataset()},
@@ -621,9 +719,10 @@ document.addEventListener('input',e=>{
   }
   if(el.type==='range'){
     const mn=+el.min,mx=+el.max;el.style.setProperty('--fill',((el.value-mn)/(mx-mn)*100)+'%');
-    const lab=el.nextElementSibling;if(lab)lab.textContent=bd==='weight'?el.value:(+el.value).toFixed(1);
+    const lab=el.nextElementSibling;if(lab)lab.textContent=bd==='weight'||bd==='bookW'?el.value:(+el.value).toFixed(2);
     return;
   }
+  if(bd==='bookNote'){const id=el.dataset.id,v=el.value;commit(ws=>{const r=byId(ws.book,id);if(r)r.note=v.slice(0,160)},{render:false,solve:false,co:'bnote'+id});return}
   if((bd==='site'||bd==='person')&&(el.dataset.f==='name'||el.dataset.f==='zone')){
     const arr=bd==='site'?'sites':'people';const id=el.dataset.id,f=el.dataset.f,v=el.value;
     commit(ws=>{const x=byId(ws[arr],id);if(x)x[f]=v},{render:false,solve:f==='zone',co:'txt'+id+f});
@@ -654,6 +753,10 @@ document.addEventListener('change',e=>{
     case 'rule':{const k=el.dataset.k;commit(ws=>{ws.rules[k]=Math.max(0,M.num(v,10))});break}
     case 'engine':commit(ws=>{ws.engine.seed=Math.max(1,M.intOr(v,1))});break;
     case 'weight':{const k=el.dataset.k;commit(ws=>{ws.weights[k]=clamp(M.intOr(v,50),0,100)},{render:false});break}
+    case 'bookW':{const id=el.dataset.id;commit(ws=>{const r=byId(ws.book,id);if(r)r.w=clamp(M.intOr(v,50),0,100)},{render:false});break}
+    case 'bookNum':{const id=el.dataset.id,side=el.dataset.side;commit(ws=>{const r=byId(ws.book,id);if(r)r[side].v=String(Math.max(0,M.num(v,0)))});break}
+    case 'routeKm':{const id=el.dataset.id;commit(ws=>{const r=byId(ws.routes,id);if(r)r.km=Math.max(0,M.num(v,0))});break}
+    case 'bookNote':render();break;
     case 'unit':commit(ws=>{ws.unit=v==='mi'?'mi':'km'},{solve:false});break;
     case 'term':case 'role':case 'cat':case 'wsName':render();break;
   }
@@ -691,7 +794,12 @@ window.addEventListener('hashchange',()=>{const hv=location.hash.slice(1);if(VIE
 window.addEventListener('scroll',()=>{if(pop&&pop._anchor&&pop._anchor.isConnected)place(pop,pop._anchor)},{passive:true});
 window.addEventListener('beforeunload',()=>{if(saveT)saveNow()});
 
-function boot(){
+async function loadConfig(){
+  if(location.protocol==='file:')return;
+  try{const r=await fetch('data/app-config.json',{cache:'no-cache'});if(r.ok){const c=await r.json();APP.config=Object.assign({},CFG_DEFAULT,c)}}catch(e){}
+}
+async function boot(){
+  await loadConfig();
   APP.ix=Store.index();
   APP.prefs=Object.assign({lang:'en',theme:'light',layout:'agenda'},APP.ix.prefs||{});
   if(!APP.ix.prefs||!APP.ix.prefs.theme){try{if(matchMedia('(prefers-color-scheme: dark)').matches)APP.prefs.theme='dusk'}catch(e){}}
@@ -712,6 +820,7 @@ function boot(){
   if(migrated)toast(t('migrated'));
   if(APP._firstRun&&location.protocol!=='file:'){APP._firstRun=false;loadDataset(true);return}
   if(!ws.plan&&APP.compiled().P.V)solve({quiet:true});
+  checkSource();
 }
 boot();
 })(window);

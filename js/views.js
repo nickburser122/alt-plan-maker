@@ -101,8 +101,13 @@ function issueText(x,D){
     case 'sitegap':return t('i_sitegap',{s:sn(x.s),d1:dn(x.d1),d2:dn(x.d2)});
     case 'dup':return t('i_dup',{s:sn(x.s),d:dn(x.d)});
     case 'avoid':return t('i_avoid',{p:pn(x.p),q:pn(x.q),s:vs(x.v),d:vd(x.v)});
+    case 'rulesite':case 'rulesoft':return t('i_rulesite',{p:pn(x.p),s:sn(x.s),d:vd(x.v),r:bn(x.b)});
+    case 'ruleday':return t('i_ruleday',{p:pn(x.p),d:vd(x.v),r:bn(x.b)});
+    case 'rulewith':case 'rulewithsoft':return t('i_rulewith',{p:pn(x.p),q:pn(x.q),s:vs(x.v),d:vd(x.v),r:bn(x.b)});
+    case 'ruleteam':return t('i_ruleteam',{s:sn(x.s),d:vd(x.v),n:x.n,max:x.max,r:bn(x.b)});
   }
   return x.k;
+  function bn(i){const id=m.book&&m.book[i];const r=id&&byId(ws.book||[],id);return r?ruleText(r):'—'}
 }
 function issueDay(x,D){
   if(x.v!=null)return D.m.days[D.m.visits[x.v].d].iso;
@@ -121,6 +126,8 @@ function warnText(w){
     case 'tight':return t('w_tight',{r:rn(w.r),d1:fmtD(w.d1),d2:fmtD(w.d2),need:w.need,free:w.free});
     case 'goalshort':return t('w_goalshort',{need:w.need,have:w.have});
     case 'rankgap':return t('w_rankgap',{n:w.n,ex:w.ex});
+    case 'rulenone':return t('w_rulenone',{r:ruleText(byId(A().ws.book||[],w.b))});
+    case 'ruleteam':return t('w_ruleteam',{r:ruleText(byId(A().ws.book||[],w.b)),n:w.n,have:w.have});
   }
   return w.k;
 }
@@ -477,8 +484,14 @@ function locationsCard(){
   let h='<section class="card" id="locations-card"><div class="card-head"><div><div class="kicker">'+esc(t('kLoc'))+'</div><h2 class="ctitle">'+esc(t('locT'))+' <span class="muted mono tiny">'+L0.length+'</span></h2></div><div class="row"><button class="btn sm" data-act="addLoc">'+ic('ic-plus')+esc(t('addLoc'))+'</button><button class="btn sm ghost" data-act="csvImport" data-kind="locations">'+ic('ic-up')+esc(t('importCsv'))+'</button></div></div>';
   if(!L0.length){h+='<div class="goal-empty">'+ic('ic-pin')+'<span>'+esc(t('noLocs'))+'</span></div></section>';return h}
   h+='<div class="locgrid">'+list.map(l=>'<div class="locitem'+(l.unknown?' unk':'')+'"><input class="inp bare" data-bind="loc" data-id="'+esc(l.id)+'" data-f="name" value="'+esc(l.name)+'"><span class="numwrap"><input class="inp num s" type="number" min="0" step="1" data-bind="loc" data-id="'+esc(l.id)+'" data-f="km" value="'+l.km+'"><span class="unit">'+unitL()+'</span></span><div class="locbar"><i style="width:'+(l.km/mx*100)+'%"></i></div><span class="mono tiny muted" title="'+esc(t('locUse'))+'">'+(cs[l.id]||0)+' · '+(cp[l.id]||0)+'</span><button class="ibtn" data-act="delLoc" data-id="'+esc(l.id)+'">'+ic('ic-trash')+'</button></div>').join('')+'</div>'
-    +'<p class="quiet">'+ic('ic-info')+esc(t('locNote'))+'</p></section>';
+    +'<p class="quiet">'+ic('ic-info')+esc(t('locNote'))+'</p>'+routesBlock()+'</section>';
   return h;
+}
+function personRulesList(p){
+  const ws=A().ws;
+  const mine=(ws.book||[]).filter(r=>(r.who.k==='person'&&r.who.v===p.id)||(r.rel==='with'&&r.what.k==='person'&&r.what.v===p.id));
+  return '<div class="prules">'+mine.map(r=>'<span class="token'+(r.on?'':' off')+(M.isHard(r)?' hard':'')+'">'+(M.isHard(r)?ic('ic-lock'):'')+esc(ruleText(r))+'<button data-act="bookFlip" data-id="'+esc(r.id)+'" title="'+esc(t('bFlip'))+'">'+ic('ic-flip')+'</button></span>').join('')
+    +'<button class="btn sm ghost" data-act="bookForPerson" data-id="'+esc(p.id)+'">'+ic('ic-plus')+esc(t('bAddFor'))+'</button></div>';
 }
 function tokenBox(list,act,id,field,opts,labelOf){
   let h='<div class="tokens">'+list.map(x=>'<span class="token">'+esc(labelOf(x))+'<button data-act="'+act+'" data-id="'+esc(id)+'" data-f="'+field+'" data-v="'+esc(x)+'">'+ic('ic-x')+'</button></span>').join('');
@@ -526,6 +539,10 @@ function peopleView(){
         +'<div><span class="lbl">'+esc(t('pairWith'))+'</span>'+tokenBox(p.pair,'tokenDel',p.id,'pair',others,pn)+'</div>'
         +'<div><span class="lbl">'+esc(t('likes'))+'</span>'+tokenBox(p.likes,'tokenDel',p.id,'likes',sites,sn)+'</div>'
         +'<div><span class="lbl">'+esc(t('bans'))+'</span>'+tokenBox(p.bans,'tokenDel',p.id,'bans',sites,sn)+'</div>'
+        +'<div><span class="lbl">'+esc(t('gender'))+'</span><div class="seg">'+[['',t('g_none')],['m',t('g_m')],['f',t('g_f')]].map(([k,l])=>'<button class="'+((p.gender||'')===k?'on':'')+'" data-act="personGender" data-id="'+esc(p.id)+'" data-v="'+k+'">'+esc(l)+'</button>').join('')+'</div></div>'
+        +'<div><span class="lbl">'+esc(t('ownPattern'))+'</span><div class="row" style="gap:8px">'+swBtn(p.runMax!=='','personPat','data-id="'+esc(p.id)+'"',true)
+          +(p.runMax!==''?'<span class="sc tiny">'+esc(t('patWork'))+stepper('personRun','data-id="'+esc(p.id)+'" data-k="runMax"',p.runMax||'∞')+'</span><span class="sc tiny">'+esc(t('patRest'))+stepper('personRun','data-id="'+esc(p.id)+'" data-k="offMin"',p.offMin===''?0:p.offMin)+'</span>'+patternStrip(+p.runMax,p.offMin===''?1:+p.offMin):'<span class="muted tiny">'+esc(t('usesGlobal'))+'</span>')+'</div></div>'
+        +'<div><span class="lbl">'+esc(t('personRules'))+'</span>'+personRulesList(p)+'</div>'
         +'</div></td></tr>';
     }
   });
@@ -533,18 +550,23 @@ function peopleView(){
   return h;
 }
 
+const RULES_NAV=[['book-card','navBook'],['pattern-card','kPattern'],['rank-card','kRank'],['hard-card','hardT'],['weights-card','weightsT'],['cats-card','kCats'],['week-card','weekT'],['words-card','kWords']];
+function rulesNav(){
+  const ws=A().ws;const nb=(ws.book||[]).filter(r=>r.on).length;
+  return '<nav class="subnav noprint" aria-label="'+esc(t('tabRules'))+'">'+RULES_NAV.map(([id,l])=>'<button class="snav" data-act="jump" data-to="'+id+'">'+esc(t(l))+(id==='book-card'&&nb?'<small>'+nb+'</small>':'')+'</button>').join('')+'</nav>';
+}
 function rulesView(){
   const a=A(),ws=a.ws;
   const words=['visit','visits','site','sites','person','people'];
   const lng=L();
-  let h='<div class="grid2"><section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kWords'))+'</div><h2 class="ctitle">'+esc(t('wordsT'))+'</h2></div>'
+  let h=rulesNav()+bookCard()+'<div class="grid2"><section class="card" id="words-card"><div class="card-head"><div><div class="kicker">'+esc(t('kWords'))+'</div><h2 class="ctitle">'+esc(t('wordsT'))+'</h2></div>'
     +'<div class="row"><span class="lbl">'+esc(t('unit'))+'</span>'+dd('unit','',ws.unit,[['km','km'],['mi','mi']])+'</div></div>'
     +'<div class="words">'+words.map(w=>'<label><span class="lbl">'+esc(t('w_'+w))+'</span><input class="inp slim" data-bind="term" data-f="'+w+'" value="'+esc(ws.terms[lng][w])+'"></label>').join('')+'</div>'
     +'<p class="quiet">'+ic('ic-globe')+esc(t('wordsNote'))+' ('+(lng==='ar'?'العربية':'English')+')</p></section>';
   h+='<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kRoles'))+'</div><h2 class="ctitle">'+esc(t('rolesT'))+'</h2></div><button class="btn sm" data-act="addRole">'+ic('ic-plus')+esc(t('addRole'))+'</button></div><div class="rolelist">'
     +ws.roles.map(r=>{const n=ws.people.filter(p=>p.roles.includes(r.id)).length;return '<div class="roleitem"><button class="colorpick" style="--c:'+esc(r.color)+'" data-act="color" data-kind="role" data-id="'+esc(r.id)+'" aria-label="colour"></button><input class="inp slim" data-bind="role" data-id="'+esc(r.id)+'" data-f="name" value="'+esc(r.name)+'"><span class="chip">'+esc(t('members',{n}))+'</span><button class="ibtn" data-act="delRole" data-id="'+esc(r.id)+'">'+ic('ic-trash')+'</button></div>'}).join('')
     +'</div><p class="quiet">'+ic('ic-info')+esc(t('rolesNote'))+'</p></section></div>';
-  h+='<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kCats'))+'</div><h2 class="ctitle">'+esc(t('catsT'))+'</h2></div><button class="btn sm" data-act="addCat">'+ic('ic-plus')+esc(t('addCat'))+'</button></div><div class="catlist">';
+  h+='<section class="card" id="cats-card"><div class="card-head"><div><div class="kicker">'+esc(t('kCats'))+'</div><h2 class="ctitle">'+esc(t('catsT'))+'</h2></div><button class="btn sm" data-act="addCat">'+ic('ic-plus')+esc(t('addCat'))+'</button></div><div class="catlist">';
   const shareSum=sum(ws.categories.filter(c=>c.planned).map(c=>c.share))||1;
   ws.categories.forEach(c=>{
     const n=ws.sites.filter(s=>s.cat===c.id).length;
@@ -558,13 +580,13 @@ function rulesView(){
   h+='</div><p class="quiet">'+ic('ic-info')+esc(t('catsNote'))+'</p></section>';
   const w0=ws.rules.weekStart;
   const focusOpts=[['auto',t('fAuto')],['near',t('fNear')],['far',t('fFar')]].concat(ws.categories.filter(c=>c.planned).map(c=>[c.id,c.name]));
-  h+='<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kRhythm'))+'</div><h2 class="ctitle">'+esc(t('weekT'))+'</h2></div></div><div class="wkgrid">';
+  h+='<section class="card" id="week-card"><div class="card-head"><div><div class="kicker">'+esc(t('kRhythm'))+'</div><h2 class="ctitle">'+esc(t('weekT'))+'</h2></div></div><div class="wkgrid">';
   for(let k=0;k<7;k++){const i=(w0+k)%7,d=ws.week[i];
     h+='<div class="wkcell'+(d.on?'':' off')+'"><div class="wktop"><span class="wkname">'+esc(arr('dows')[i])+'</span>'+swBtn(d.on,'weekOn','data-i="'+i+'"',true)+'</div>'
       +(d.on?stepper('weekN','data-i="'+i+'"',d.n)+dd('weekFocus','data-i="'+i+'"',d.focus,focusOpts,{cls:'full'}):'<span class="tiny muted">'+esc(t('dayOff'))+'</span>')+'</div>'}
   h+='</div><p class="quiet">'+ic('ic-info')+esc(t('weekNote'))+'</p></section>';
   const R=ws.rules;
-  h+='<div class="grid2"><section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kRules'))+'</div><h2 class="ctitle">'+esc(t('hardT'))+'</h2></div></div><div class="setgrid">'
+  h+='<div class="grid2"><section class="card" id="hard-card"><div class="card-head"><div><div class="kicker">'+esc(t('kRules'))+'</div><h2 class="ctitle">'+esc(t('hardT'))+'</h2></div></div><div class="setgrid">'
     +'<div class="setrow"><span class="rl">'+esc(t('perDay'))+'<small>'+esc(t('perDayN'))+'</small></span>'+stepper('ruleStep','data-k="perDay"',R.perDay)+'</div>'
     +'<div class="setrow"><span class="rl">'+esc(t('siteGap'))+'</span>'+stepper('ruleStep','data-k="siteGap"',R.siteGap)+'</div>'
     +'<div class="setrow"><span class="rl">'+esc(t('distinct'))+'</span>'+swBtn(R.distinct,'ruleToggle','data-k="distinct"')+'</div>'
@@ -572,7 +594,7 @@ function rulesView(){
     +'<div class="setrow"><span class="rl">'+esc(t('nearKm'))+'</span><span class="numwrap"><input class="inp num" type="number" min="0" data-bind="rule" data-k="nearKm" value="'+R.nearKm+'"><span class="unit">'+unitL()+'</span></span></div>'
     +'<div class="setrow"><span class="rl">'+esc(t('weekStart'))+'</span>'+dd('rule','data-k="weekStart"',R.weekStart,[0,1,6].map(i=>[i,arr('dows')[i]]))+'</div>'
     +'</div></section>';
-  h=h.replace('<div class="grid2"><section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kRules'))+'</div>',patternCard(R)+rankCard(R)+'<div class="grid2"><section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kRules'))+'</div>');
+  h=h.replace('<div class="grid2"><section class="card" id="hard-card">',patternCard(R)+rankCard(R)+'<div class="grid2"><section class="card" id="hard-card">');
   const E=ws.engine;
   h+='<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kEngine'))+'</div><h2 class="ctitle">'+esc(t('engineT'))+'</h2></div></div><div class="setgrid">'
     +'<div class="setrow"><span class="rl">'+esc(t('seed'))+'</span><input class="inp num" style="width:120px" type="number" min="1" data-bind="engine" data-k="seed" value="'+E.seed+'"><button class="ibtn" data-act="reroll">'+ic('ic-dice')+'</button></div>'
@@ -580,7 +602,7 @@ function rulesView(){
     +'<div class="setrow"><span class="rl">'+esc(t('runs'))+'</span>'+stepper('engRuns','',E.runs)+'</div>'
     +'<div class="setrow"><span class="rl">'+esc(t('live'))+'</span>'+swBtn(E.live,'engLive','')+'</div>'
     +'</div><p class="quiet">'+ic('ic-info')+esc(t('engineNote'))+'</p></section></div>';
-  h+='<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kWeights'))+'</div><h2 class="ctitle">'+esc(t('weightsT'))+'</h2></div><button class="linkbtn" data-act="restoreW">'+ic('ic-undo')+esc(t('restoreW'))+'</button></div><div>';
+  h+='<section class="card" id="weights-card"><div class="card-head"><div><div class="kicker">'+esc(t('kWeights'))+'</div><h2 class="ctitle">'+esc(t('weightsT'))+'</h2></div><button class="linkbtn" data-act="restoreW">'+ic('ic-undo')+esc(t('restoreW'))+'</button></div><div>';
   M.WEIGHT_KEYS.forEach(k=>{const on=ws.useW[k],v=ws.weights[k];
     h+='<div class="wrow'+(on?'':' off')+'">'+swBtn(on,'useW','data-k="'+k+'"',true)+'<span class="wlab">'+esc(t('wt_'+k))+'</span><input type="range" class="rng" min="0" max="100" step="1" value="'+v+'" style="--fill:'+v+'%" data-bind="weight" data-k="'+k+'"><span class="wv">'+v+'</span></div>'});
   h+='</div><p class="quiet">'+ic('ic-info')+esc(t('weightsNote'))+'</p></section>';
@@ -615,29 +637,18 @@ function modelView(){
   const W=C.P.w,R=ws.rules;
   const bd=D&&!stale?D.r.breakdown||{}:null;
   const tot=bd?Math.max(1,sum(Object.keys(bd).map(k=>Math.max(0,bd[k])))):1;
-  const rows=[
-    ['goals','goals','t_goals','Σ 120·w·short + 250·w·over'],
-    ['rank','rank','t_rank','Σ w·(4·def·(1.5+4·def) + 0.6·waste)'],
-    ['fair','fair','t_fair','Σ 1.5·w·(load − target)²'],
-    ['rotate','rotate','t_rotate','Σ 1.2·w·(uses − expected)²'],
-    ['mix','mix','t_mix','Σ w·(count − target)²'],
-    ['pref','pref','t_pref','2·w·km/Dmax'],
-    ['home','home','t_home','2·w·|home − km|/Dmax'],
-    ['focus','focus','t_focus','4·w·Δkm/Dmax  |  6·w'],
-    ['cluster','cluster','t_cluster','3·w·span/Dmax + 2·w·(zones−1)'],
-    ['spacing','spacing','t_spacing','2·w·((ideal−gap)/ideal)²'],
-    ['pairs','pairs','t_pairs','avoid +150·w, prefer −3·w'],
-    ['likes','likes','t_likes','−1.5·w per liked visit']
-  ];
-  const hard=[['coverage','t_coverage','1000 / open seat · 6000 / empty visit'],['hard','t_hard','20000 each'],['rest','t_restH',R.mode==='strict'?'40000':'300'],['distinct','t_distinct','2500']];
-  let h='<section class="card" id="equation-card"><div class="card-head"><div><div class="kicker">'+esc(t('kModel'))+'</div><h2 class="ctitle">'+esc(t('modelT'))+'</h2></div>'+(bd?'<span class="chip">'+esc(t('cost'))+' '+fmtN(D.r.cost)+'</span>':'<button class="btn sm" data-act="solve">'+ic('ic-wand')+esc(t('solve'))+'</button>')+'</div>';
+  const E=eqDefs();
+  const rows=E.soft;
+  const hard=E.hard.map(x=>[x[0],x[1],x[2]]);
+  let h='<section class="card" id="equation-card"><div class="card-head"><div><div class="kicker">'+esc(t('kModel'))+'</div><h2 class="ctitle">'+esc(t('modelT'))+'</h2></div><div class="row">'+(bd?'<span class="chip">'+esc(t('cost'))+' '+fmtN(D.r.cost)+'</span>':'<button class="btn sm" data-act="solve">'+ic('ic-wand')+esc(t('solve'))+'</button>')
+    +'<button class="btn sm" data-act="eqCopyQuick" title="'+esc(t('eqCopyN'))+'">'+ic('ic-copy')+esc(t('eqCopy'))+'</button><button class="btn sm primary" data-act="eqExport">'+ic('ic-down')+esc(t('eqExport'))+'</button></div></div>';
   const on=rows.filter(r=>W[r[1]]>0);
-  h+='<div class="eq"><span class="eqf">min&nbsp;J =</span> '+hard.map(x=>'<span class="eqt hard">'+esc(t(x[1]))+'</span>').join(' + ')+(on.length?' + '+on.map(r=>'<span class="eqt"><b>'+ws.weights[r[1]]+'</b>·'+esc(t(r[2]))+'</span>').join(' + '):'')+'</div>';
+  h+='<div class="eq" dir="ltr"><span class="eqf">min&nbsp;J =</span> '+hard.map(x=>'<span class="eqt hard">'+esc(t(x[1]))+'</span>').join(' + ')+(on.length?' + '+on.map(r=>'<span class="eqt"><b>'+ws.weights[r[1]]+'</b>·'+esc(t(r[2]))+'</span>').join(' + '):'')+'</div>';
   h+='<p class="quiet">'+ic('ic-info')+esc(t('modelNote'))+'</p></section>';
   h+='<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kNeedle'))+'</div><h2 class="ctitle">'+esc(t('needleT'))+'</h2></div><button class="linkbtn" data-act="restoreW">'+ic('ic-undo')+esc(t('restoreW'))+'</button></div>';
   h+='<div class="needle"><div class="nhead"><span></span><span>'+esc(t('term'))+'</span><span>'+esc(t('formula'))+'</span><span>'+esc(t('weightW'))+'</span><span>'+esc(t('share'))+'</span></div>';
   hard.forEach(([k,l,f])=>{const v=bd?bd[k]||0:0;h+='<div class="nrow hard"><span class="lock">'+ic('ic-lock')+'</span><span class="nl">'+esc(t(l))+'</span><code>'+esc(f)+'</code><span class="tiny muted">'+esc(t('fixed'))+'</span>'+shareBar(v,tot,bd)+'</div>'});
-  rows.forEach(([k,wk,l,f])=>{const onW=ws.useW[wk],val=ws.weights[wk];const v=bd?bd[k]||0:0;
+  rows.forEach(([k,wk,l,f])=>{const onW=ws.useW[wk],val=ws.weights[wk];const v=bd?Math.abs(bd[k]||0):0;
     h+='<div class="nrow'+(onW?'':' off')+'">'+swBtn(onW,'useW','data-k="'+wk+'"',true)+'<span class="nl">'+esc(t('wt_'+wk))+'<small>'+esc(t('why_'+wk))+'</small></span><code>'+esc(f)+'</code><span class="nw"><input type="range" class="rng" min="0" max="100" step="1" value="'+val+'" style="--fill:'+val+'%" data-bind="weight" data-k="'+wk+'"><span class="wv">'+val+'</span></span>'+shareBar(v,tot,bd)+'</div>'});
   h+='</div><p class="quiet">'+ic('ic-info')+esc(t('needleNote'))+'</p></section>';
   const P=C.P;
@@ -685,6 +696,7 @@ function insightsView(){
     +chk(t('a_bounds'),cnt('sitemax')+cnt('sitemin'))
     +chk(t('a_gap'),cnt('sitegap'),R.siteGap>0)
     +chk(t('a_pairs'),cnt('avoid'))
+    +chk(t('a_book'),cnt('rulesite')+cnt('ruleday')+cnt('rulewith')+D.iss.filter(x=>x.k==='ruleteam'&&x.sev==='warn').length,(ws.book||[]).some(r=>r.on))
     +'</div></section>';
   const cats=m.cats.map(id=>catOf(id)).filter(Boolean);
   const tot=Math.max(1,sum(st.catCount));
@@ -729,7 +741,7 @@ function kpi(l,v,s,cls){return '<div class="kpi '+(cls||'')+'"><div class="kl">'
 
 function workspaceView(){
   const a=A(),ws=a.ws;
-  let h='<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kWsList'))+'</div><h2 class="ctitle">'+esc(t('wsT'))+'</h2></div>'
+  let h=sourceCard()+'<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kWsList'))+'</div><h2 class="ctitle">'+esc(t('wsT'))+'</h2></div>'
     +'<label class="fld"><span>'+esc(t('wsName'))+'</span><input class="inp slim" data-bind="wsName" value="'+esc(ws.name)+'" style="min-width:220px"></label></div><div class="wscards">';
   a.ix.list.slice().sort((x,y)=>y.updated-x.updated).forEach(it=>{
     const on=it.id===ws.id;
@@ -747,6 +759,7 @@ function workspaceView(){
   h+='<p class="quiet">'+ic('ic-info')+esc(t('snapNote'))+'</p></section>';
   h+='<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kIO'))+'</div><h2 class="ctitle">'+esc(t('ioT'))+'</h2></div></div><div class="setgrid">'
     +'<div class="setrow"><span class="rl">JSON</span><button class="btn sm" data-act="wsExport">'+ic('ic-down')+esc(t('expJson'))+'</button><button class="btn sm" data-act="wsImport">'+ic('ic-up')+esc(t('impJson'))+'</button></div>'
+    +'<div class="setrow"><span class="rl">'+esc(t('eqExportT'))+'</span><button class="btn sm" data-act="eqExport">'+ic('ic-sigma')+esc(t('eqExport'))+'</button></div>'
     +'<div class="setrow"><span class="rl">'+esc(t('dataset'))+'<small>'+esc(t('datasetN'))+'</small></span><button class="btn sm primary" data-act="loadDataset">'+ic('ic-layers')+esc(t('loadDataset'))+'</button><button class="btn sm" data-act="wsImport">'+ic('ic-up')+esc(t('impDataset'))+'</button></div>'
     +'<div class="setrow"><span class="rl">'+esc(t('language'))+'</span><div class="seg"><button class="'+(L()==='en'?'on':'')+'" data-act="lang" data-v="en">English</button><button class="'+(L()==='ar'?'on':'')+'" data-act="lang" data-v="ar">العربية</button></div></div>'
     +'<div class="setrow"><span class="rl">'+esc(t('theme'))+'</span><div class="seg"><button class="'+(a.prefs.theme!=='dusk'?'on':'')+'" data-act="themeSet" data-v="light">'+ic('ic-sun')+esc(t('light'))+'</button><button class="'+(a.prefs.theme==='dusk'?'on':'')+'" data-act="themeSet" data-v="dusk">'+ic('ic-moon')+esc(t('dusk'))+'</button></div></div>'
@@ -780,7 +793,204 @@ function kbdModal(){
   const rows=[['<kbd>1</kbd>–<kbd>7</kbd>',t('kbTabs')],['<kbd>G</kbd>',t('kbSolve')],['<kbd>R</kbd>',t('kbReroll')],['<kbd>E</kbd>',t('kbExport')],['<kbd>L</kbd>',t('kbLayout')],['<kbd>Ctrl</kbd><kbd>K</kbd>',t('kbPalette')],['<kbd>Ctrl</kbd><kbd>Z</kbd> / <kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>Z</kbd>',t('kbUndo')],['<kbd>?</kbd>',t('kbHelp')]];
   return '<div class="modal sm" role="dialog" aria-modal="true"><div class="mhead"><div><div class="kicker">'+esc(t('kbdT'))+'</div><h2 class="ctitle">'+esc(t('kbdT'))+'</h2></div><button class="ibtn" data-act="modalClose">'+ic('ic-x')+'</button></div><div class="kbgrid msec">'+rows.map(([k,l])=>'<span>'+k+'</span><span>'+esc(l)+'</span>').join('')+'</div></div>';
 }
+const lvlSel=()=>M.LEVELS.map(v=>[String(v),v+' · '+t('lvl'+v)]);
+function whoKOpts(){return M.WHO_K.map(k=>[k,t('bw_'+k)])}
+function whatKOpts(){return M.WHAT_K.map(k=>[k,t('bx_'+k)])}
+function whoVOpts(k){
+  const ws=A().ws;
+  if(k==='person')return ws.people.map(p=>[p.id,p.name,(roleOf(p.roles[0])||{}).color,p.gender?t('g_'+p.gender):'']);
+  if(k==='role')return ws.roles.map(r=>[r.id,r.name,r.color]);
+  if(k==='gender')return [['m',t('g_m')],['f',t('g_f')]];
+  if(k==='rankGe'||k==='rankLe')return lvlSel();
+  return [];
+}
+function whatVOpts(k){
+  const ws=A().ws;
+  if(k==='site')return ws.sites.filter(s=>s.active).map(s=>[s.id,s.name,catColor(s.cat),(locOf(s.loc)||{}).name||'']);
+  if(k==='cat')return ws.categories.map(c=>[c.id,c.name,c.color]);
+  if(k==='loc')return (ws.locations||[]).slice().sort((a,b)=>a.km-b.km).map(l=>[l.id,l.name,null,r1(l.km)+' '+unitL()]);
+  if(k==='tag'){const s=new Set();ws.sites.forEach(x=>{if(x.tag)s.add(x.tag)});return Array.from(s).sort().map(x=>[x,x])}
+  if(k==='critGe')return lvlSel();
+  return [];
+}
+function mLabel(m,isWho){
+  const ws=A().ws;
+  if(m.k==='all')return t(isWho?'bw_all':'bx_all');
+  const nm=(arr,id)=>{const x=byId(arr,id);return x?x.name:'?'};
+  let v=m.v;
+  if(m.k==='person')v=nm(ws.people,m.v);else if(m.k==='role')v=nm(ws.roles,m.v);else if(m.k==='gender')v=t('g_'+m.v);
+  else if(m.k==='site')v=nm(ws.sites,m.v);else if(m.k==='cat')v=nm(ws.categories,m.v);else if(m.k==='loc')v=nm(ws.locations||[],m.v);
+  else if(m.k==='kmGe'||m.k==='kmLe')v=m.v+' '+unitL();
+  return t((isWho?'bw_':'bx_')+m.k)+' '+v;
+}
+function ruleText(r){
+  if(!r)return '—';
+  if(r.rel==='team')return t('bt_sent',{what:mLabel(r.what),sense:t('bs_team_'+r.sense),op:t('op_'+r.op),n:r.n,who:mLabel(r.who,true)});
+  let obj;
+  if(r.rel==='day')obj=r.what.v.map((x,i)=>x?arr('dows')[i]:null).filter(Boolean).join(', ')||'—';
+  else obj=mLabel(r.what,r.rel==='with');
+  return mLabel(r.who,true)+' '+t('bs_'+r.rel+'_'+r.sense)+' '+obj;
+}
+function mPicker(rid,side,m,isWho,rel){
+  const kOpts=isWho?whoKOpts():whatKOpts();
+  const at='data-id="'+esc(rid)+'" data-side="'+side+'"';
+  let h=dd('book',at+' data-f="k"',m.k,kOpts,{cls:'bdd'});
+  if(m.k==='kmGe'||m.k==='kmLe')h+='<span class="numwrap"><input class="inp num s" type="number" min="0" data-bind="bookNum" '+at+' value="'+esc(m.v)+'"><span class="unit">'+unitL()+'</span></span>';
+  else if(m.k!=='all'){const vo=isWho?whoVOpts(m.k):whatVOpts(m.k);h+=dd('book',at+' data-f="v"',m.v,vo,{search:vo.length>8,ph:vo.some(o=>String(o[0])===String(m.v))?null:t('pick'),cls:'bdd'})}
+  return h;
+}
+function bookRow(r,vio){
+  const hard=M.isHard(r);
+  const id=esc(r.id);
+  const relOpts=M.RELS.map(k=>[k,t('br_'+k)]);
+  const senses=r.rel==='team'?['prefer','only']:M.SENSES;
+  const sOpts=senses.map(k=>[k,t('bs_'+r.rel+'_'+k)]);
+  let sent='';
+  if(r.rel==='team'){
+    sent='<span class="gw">'+esc(t('bt_visitsTo'))+'</span>'+mPicker(r.id,'what',r.what,false,r.rel)
+      +dd('book','data-id="'+id+'" data-f="sense"',r.sense,sOpts,{cls:'bdd sense pos '+(hard?'hard':'soft')})
+      +dd('book','data-id="'+id+'" data-f="op"',r.op,[['min',t('op_min')],['max',t('op_max')]],{cls:'bdd'})
+      +stepper('bookN','data-id="'+id+'"',r.n)+mPicker(r.id,'who',r.who,true,r.rel);
+  }else{
+    sent=mPicker(r.id,'who',r.who,true,r.rel)+dd('book','data-id="'+id+'" data-f="sense"',r.sense,sOpts,{cls:'bdd sense '+(r.sense==='prefer'||r.sense==='only'?'pos':'neg')+' '+(hard?'hard':'soft')});
+    if(r.rel==='day'){const n=arr('dows1');const w0=A().ws.rules.weekStart;sent+='<div class="wds">';for(let k=0;k<7;k++){const i=(w0+k)%7;sent+='<button class="wd'+(r.what.v[i]?' on':'')+'" data-act="bookDow" data-id="'+id+'" data-i="'+i+'" title="'+esc(arr('dows')[i])+'">'+n[i]+'</button>'}sent+='</div>'}
+    else sent+=mPicker(r.id,'what',r.what,r.rel==='with',r.rel);
+  }
+  const vc=vio==null?'':(vio?'<span class="chip '+(hard?'bad':'warn')+'" title="'+esc(t('bookVio'))+'">'+ic('ic-alert')+vio+'</span>':'<span class="chip good">'+ic('ic-check')+'</span>');
+  return '<div class="brule'+(r.on?'':' off')+(hard?' hard':'')+'" data-rid="'+id+'">'
+    +swBtn(r.on,'bookOn','data-id="'+id+'"',true)
+    +'<div class="bmain"><div class="bsent">'+dd('book','data-id="'+id+'" data-f="rel"',r.rel,relOpts,{cls:'bdd rel'})+sent+'</div>'
+    +'<div class="bmeta">'+(hard?'<span class="bstrength hard">'+ic('ic-lock')+esc(t('bHard'))+'</span>':'<span class="bstrength">'+esc(t('bSoft'))+'<input type="range" class="rng sm" min="0" max="100" step="5" value="'+r.w+'" style="--fill:'+r.w+'%" data-bind="bookW" data-id="'+id+'"><span class="wv">'+r.w+'</span></span>')
+    +'<input class="inp bare bnote" data-bind="bookNote" data-id="'+id+'" value="'+esc(r.note||'')+'" placeholder="'+esc(t('bNotePh'))+'">'+vc+'</div></div>'
+    +'<div class="bacts"><button class="ibtn" data-act="bookFlip" data-id="'+id+'" title="'+esc(t('bFlip'))+'">'+ic('ic-flip')+'</button>'
+    +'<button class="ibtn'+(hard?' on':'')+'" data-act="bookHard" data-id="'+id+'" title="'+esc(hard?t('bMakeSoft'):t('bMakeHard'))+'">'+ic('ic-lock')+'</button>'
+    +'<button class="ibtn" data-act="bookDup" data-id="'+id+'" title="'+esc(t('duplicate'))+'">'+ic('ic-copy')+'</button>'
+    +'<button class="ibtn" data-act="bookDel" data-id="'+id+'" title="'+esc(t('remove'))+'">'+ic('ic-trash')+'</button></div></div>';
+}
+function bookVio(){
+  const a=A(),D=derive();if(!D||a.isStale())return null;
+  const ids=D.m.book||[];const c={};ids.forEach(id=>c[id]=0);
+  D.iss.forEach(x=>{if(x.b!=null&&ids[x.b]!=null&&/^rule/.test(x.k))c[ids[x.b]]++});
+  return c;
+}
+function bookCard(){
+  const a=A(),ws=a.ws,book=ws.book||[];
+  const vio=bookVio();
+  const tpl=(a.config&&a.config.ruleTemplates)||[];
+  const addOpts=[['__blank',t('bBlank')]].concat(tpl.map((x,i)=>[String(i),(x.label&&(x.label[L()]||x.label.en))||('#'+(i+1))]));
+  let h='<section class="card" id="book-card"><div class="card-head"><div><div class="kicker">'+esc(t('kBook'))+'</div><h2 class="ctitle">'+esc(t('bookT'))+' <span class="muted mono tiny">'+book.filter(r=>r.on).length+' / '+book.length+'</span></h2></div>'
+    +'<div class="row">'+dd('bookAdd','','',addOpts,{ph:'+ '+t('bAdd'),cls:'ghostdd'})
+    +(book.length?'<button class="btn sm ghost" data-act="bookAllOn" title="'+esc(t('bAllOn'))+'">'+ic('ic-check')+esc(t('bAllOn'))+'</button>':'')
+    +'<button class="btn sm" data-act="bookJson">'+ic('ic-code')+esc(t('bJson'))+'</button></div></div>';
+  if(!book.length)h+='<div class="goal-empty">'+ic('ic-flip')+'<span>'+esc(t('bookEmpty'))+'</span></div>';
+  else h+='<div class="brules">'+book.map(r=>bookRow(r,vio?vio[r.id]:null)).join('')+'</div>';
+  h+='<div class="blegend"><span><b class="pos">'+esc(t('bLgPrefer'))+'</b> ⇄ <b class="neg">'+esc(t('bLgAvoid'))+'</b></span><span>'+ic('ic-lock')+'<b class="pos">'+esc(t('bLgOnly'))+'</b> ⇄ <b class="neg">'+esc(t('bLgNever'))+'</b></span><span class="muted">'+ic('ic-flip')+esc(t('bLgFlip'))+'</span></div>';
+  h+='<p class="quiet">'+ic('ic-info')+esc(t('bookNote'))+'</p></section>';
+  return h;
+}
+function jsonModal(st){
+  return '<div class="modal" role="dialog" aria-modal="true"><div class="mhead"><div><div class="kicker">JSON</div><h2 class="ctitle">'+esc(t(st.title))+'</h2></div><button class="ibtn" data-act="modalClose">'+ic('ic-x')+'</button></div>'
+    +'<p class="quiet" style="margin-top:4px">'+ic('ic-info')+esc(t(st.note))+'</p>'
+    +'<div class="msec"><textarea class="jsonedit" id="jsonEd" spellcheck="false" dir="ltr"></textarea><div class="jsonerr" id="jsonErr"></div></div>'
+    +'<div class="mfoot">'+(st.apply?'<button class="btn primary" data-act="jsonApply">'+ic('ic-check')+esc(t('apply'))+'</button>':'')+'<button class="btn" data-act="jsonCopy">'+ic('ic-copy')+esc(t('copy'))+'</button><button class="btn" data-act="jsonDownload">'+ic('ic-down')+esc(t('download'))+'</button><span class="grow"></span><button class="btn ghost" data-act="modalClose">'+esc(t('close'))+'</button></div></div>';
+}
+
+function eqDefs(){
+  const ws=A().ws,R=ws.rules,st=R.mode==='strict';
+  return {
+    hard:[
+      ['coverage','t_coverage','1000·open seats + 6000·empty visits','1000\\,n_{open} + 6000\\,n_{empty}'],
+      ['hard','t_hard','20000 per breach','20000\\,n_{hard}'],
+      ['rest','t_restH',(st?'40000':'300')+' per breach',(st?'40000':'300')+'\\,n_{rest}'],
+      ['distinct','t_distinct','2500 per duplicate','2500\\,n_{dup}'],
+      ['bookH','t_bookH',(st?'40000':'5000')+' per must-rule breach',(st?'40000':'5000')+'\\,n_{must}']
+    ],
+    soft:[
+      ['goals','goals','t_goals','Σ 120·w·short + 250·w·over','\\sum_g 120\\,w\\,\\mathrm{short}_g + 250\\,w\\,\\mathrm{over}_g'],
+      ['book','book','t_book','Σ_r w_r·(1.2·[site/day] + 3·[avoid-with] − 0.8·[pair-with] + 2·short)','\\sum_r w_r\\big(1.2\\,[\\mathrm{site/day}] + 3\\,[\\mathrm{avoid}] - 0.8\\,[\\mathrm{pair}] + 2\\,\\mathrm{short}_r\\big)'],
+      ['rank','rank','t_rank','Σ w·(4·def·(1.5+4·def) + 0.6·waste)','\\sum w\\big(4\\,\\delta(1.5+4\\delta) + 0.6\\,\\omega\\big)'],
+      ['fair','fair','t_fair','Σ 1.5·w·(load − target)²','\\sum_p 1.5\\,w\\,(L_p - T_p)^2'],
+      ['rotate','rotate','t_rotate','Σ 1.2·w·(uses − expected)²','\\sum_s 1.2\\,w\\,(u_s - e_s)^2'],
+      ['mix','mix','t_mix','Σ w·(count − target)²','\\sum_c w\\,(n_c - t_c)^2'],
+      ['pref','pref','t_pref','2·w·km/Dmax','2\\,w\\,\\frac{km}{D_{max}}'],
+      ['home','home','t_home','2·w·dist(home, site)/Dmax','2\\,w\\,\\frac{d(h_p,s)}{D_{max}}'],
+      ['focus','focus','t_focus','4·w·Δkm/Dmax  |  6·w','4\\,w\\,\\frac{\\Delta km}{D_{max}} \\;\\vert\\; 6\\,w'],
+      ['cluster','cluster','t_cluster','3·w·span/Dmax + 2·w·(zones−1)','3\\,w\\,\\frac{\\mathrm{span}}{D_{max}} + 2\\,w\\,(z-1)'],
+      ['spacing','spacing','t_spacing','2·w·((ideal−gap)/ideal)²','2\\,w\\left(\\frac{g^*-g}{g^*}\\right)^2'],
+      ['pairs','pairs','t_pairs','avoid +150·w, prefer −3·w','150\\,w\\,[\\mathrm{avoid}] - 3\\,w\\,[\\mathrm{pair}]'],
+      ['likes','likes','t_likes','−1.5·w per liked visit','-1.5\\,w\\,[\\mathrm{liked}]']
+    ]
+  };
+}
+function eqText(fmt){
+  const a=A(),ws=a.ws,E=eqDefs(),D=derive(),stale=a.isStale();
+  const bd=D&&!stale?D.r.breakdown||{}:null;
+  const on=E.soft.filter(r=>ws.useW[r[1]]&&ws.weights[r[1]]>0);
+  const val=k=>bd?fmtN(bd[k]||0):'';
+  const nm=k=>t(k);
+  if(fmt==='latex'){
+    const hard=E.hard.map(x=>x[3]).join(' + ');
+    const soft=on.map(r=>'+ '+ws.weights[r[1]]+'\\cdot f_{\\mathrm{'+r[0]+'}}').join(' ');
+    let s='% '+ws.name+' — Cadence objective\n% w = W/50, W = weight 0–100\n\\begin{aligned}\n\\min J &= '+hard+'\\\\\n&\\quad '+soft+'\\\\[4pt]\n';
+    on.forEach(r=>{s+='f_{\\mathrm{'+r[0]+'}} &= '+r[4]+'\\\\\n'});
+    return s+'\\end{aligned}\n';
+  }
+  if(fmt==='json'){
+    return JSON.stringify({workspace:ws.name,objective:'min J',note:'w = weight/50',solved:!!bd,cost:bd?D.r.cost:null,
+      hard:E.hard.map(x=>({term:x[0],label:nm(x[1]),formula:x[2],value:bd?bd[x[0]]||0:null})),
+      soft:E.soft.map(r=>({term:r[0],label:nm(r[2]),weight:ws.weights[r[1]],enabled:!!ws.useW[r[1]],formula:r[3],latex:r[4],value:bd?bd[r[0]]||0:null})),
+      rulebook:M.bookForExport(ws).filter(r=>r.on).map(r=>Object.assign({text:ruleText(M.normRule(r))},r))},null,2);
+  }
+  const md=fmt==='md';
+  const bookRules=(ws.book||[]).filter(r=>r.on);
+  let s=md?'# '+ws.name+' — objective\n\n':ws.name+' — objective\n';
+  const full='min J = '+E.hard.map(x=>nm(x[1])).join(' + ')+(on.length?' '+on.map(r=>'+ '+ws.weights[r[1]]+'·'+nm(r[2])).join(' '):'');
+  s+=md?'```\n'+full+'\n```\n\n':full+'\n\n';
+  if(md){
+    s+='| '+t('term')+' | '+t('formula')+' | '+t('weightW')+' | '+t('cost')+' |\n|---|---|---|---|\n';
+    E.hard.forEach(x=>{s+='| '+nm(x[1])+' | `'+x[2]+'` | '+t('fixed')+' | '+val(x[0])+' |\n'});
+    E.soft.forEach(r=>{s+='| '+nm(r[2])+' | `'+r[3]+'` | '+(ws.useW[r[1]]?ws.weights[r[1]]:t('off'))+' | '+val(r[0])+' |\n'});
+    if(bookRules.length)s+='\n## '+t('bookT')+'\n\n'+bookRules.map(r=>'- '+ruleText(r)+(M.isHard(r)?' 🔒':' (w '+r.w+')')).join('\n')+'\n';
+    return s+'\n_w = W/50_\n';
+  }
+  const pad=(x,n)=>{x=String(x);return x.length>=n?x+' ':x+' '.repeat(n-x.length)};
+  s+=t('hardT')+'\n';E.hard.forEach(x=>{s+='  '+pad(nm(x[1]),18)+pad(x[2],44)+val(x[0])+'\n'});
+  s+='\n'+t('weightsT')+' (w = W/50)\n';E.soft.forEach(r=>{s+='  '+pad(nm(r[2]),18)+pad(ws.useW[r[1]]?'W='+ws.weights[r[1]]:t('off'),8)+pad(r[3],56)+val(r[0])+'\n'});
+  if(bookRules.length)s+='\n'+t('bookT')+'\n'+bookRules.map(r=>'  • '+ruleText(r)+(M.isHard(r)?' [must]':' [w '+r.w+']')).join('\n')+'\n';
+  if(bd)s+='\nJ = '+fmtN(D.r.cost)+'\n';
+  return s;
+}
+function eqModal(st){
+  const fmts=[['text','Text'],['latex','LaTeX'],['md','Markdown'],['json','JSON']];
+  return '<div class="modal" role="dialog" aria-modal="true"><div class="mhead"><div><div class="kicker">'+esc(t('kModel'))+'</div><h2 class="ctitle">'+esc(t('eqExportT'))+'</h2></div><button class="ibtn" data-act="modalClose">'+ic('ic-x')+'</button></div>'
+    +'<div class="msec"><div class="mlab">'+esc(t('fmt'))+'</div><div class="seg">'+fmts.map(([k,l])=>'<button class="'+(st.fmt===k?'on':'')+'" data-act="eqFmt" data-v="'+k+'">'+esc(l)+'</button>').join('')+'</div></div>'
+    +'<div class="msec"><div class="mlab">'+esc(t('preview'))+'</div><pre class="export-preview" id="eqPrev" dir="ltr"></pre></div>'
+    +'<div class="mfoot"><button class="btn primary" data-act="eqCopy">'+ic('ic-copy')+esc(t('copy'))+'</button><button class="btn" data-act="eqDownload">'+ic('ic-down')+esc(t('download'))+'</button><span class="grow"></span><button class="btn ghost" data-act="modalClose">'+esc(t('close'))+'</button></div></div>';
+}
+function routesBlock(){
+  const ws=A().ws,L0=ws.locations||[],rs=ws.routes||[];
+  if(L0.length<2)return '';
+  const lo=L0.slice().sort((x,y)=>x.km-y.km).map(l=>[l.id,l.name,null,r1(l.km)+' '+unitL()]);
+  const byLoc=id=>byId(L0,id);
+  let h='<div class="grouplbl" style="margin-top:20px">'+ic('ic-route')+esc(t('routesT'))+' <span class="muted mono tiny">'+rs.length+'</span><span class="grow"></span><button class="btn sm" data-act="addRoute">'+ic('ic-plus')+esc(t('addRoute'))+'</button></div>';
+  if(!rs.length)h+='<div class="muted tiny" style="padding:6px 2px">'+esc(t('routesEmpty'))+'</div>';
+  else h+='<div class="routes">'+rs.map(r=>{const la=byLoc(r.a),lb=byLoc(r.b);const est=la&&lb?Math.abs(la.km-lb.km):0;
+    return '<div class="route">'+dd('route','data-id="'+esc(r.id)+'" data-f="a"',r.a,lo,{search:true})+'<span class="muted">↔</span>'+dd('route','data-id="'+esc(r.id)+'" data-f="b"',r.b,lo,{search:true})
+      +'<span class="numwrap"><input class="inp num s" type="number" min="0" step="1" data-bind="routeKm" data-id="'+esc(r.id)+'" value="'+r.km+'"><span class="unit">'+unitL()+'</span></span><span class="mono tiny muted" title="'+esc(t('routeEst'))+'">≈'+r1(est)+'</span><button class="ibtn" data-act="delRoute" data-id="'+esc(r.id)+'">'+ic('ic-trash')+'</button></div>'}).join('')+'</div>';
+  return h+'<p class="quiet">'+ic('ic-info')+esc(t('routesNote'))+'</p>';
+}
+function sourceCard(){
+  const a=A(),ws=a.ws,src=ws.source,cfg=a.config||{};
+  const url=src&&src.url||'';
+  return '<section class="card" id="source-card"><div class="card-head"><div><div class="kicker">'+esc(t('kSource'))+'</div><h2 class="ctitle">'+esc(t('sourceT'))+'</h2></div>'
+    +(a.srcUpdate?'<span class="chip warn">'+ic('ic-alert')+esc(t('srcChanged'))+'</span>':(src?'<span class="chip good">'+ic('ic-check')+esc(t('srcLinked'))+'</span>':'<span class="chip">'+esc(t('srcNone'))+'</span>'))+'</div><div class="setgrid">'
+    +'<div class="setrow"><span class="rl">'+esc(t('srcFile'))+'<small>'+esc(src?t('srcAt',{d:new Date(src.at).toLocaleString(L()==='ar'?'ar-EG':'en-GB',{dateStyle:'medium',timeStyle:'short'})}):t('srcNoneN'))+'</small></span><code class="srcpath">'+esc(url||(cfg.datasetLabel||'data/complete_data.json'))+'</code></div>'
+    +'<div class="setrow"><span class="rl">'+esc(t('srcRefresh'))+'<small>'+esc(t('srcRefreshN'))+'</small></span><button class="btn sm primary" data-act="srcRefresh" data-keep="1">'+ic('ic-undo')+esc(t('srcKeep'))+'</button><button class="btn sm" data-act="srcRefresh" data-keep="0">'+esc(t('srcReplace'))+'</button></div>'
+    +'<div class="setrow"><span class="rl">'+esc(t('srcAuto'))+'<small>'+esc(t('srcAutoN'))+'</small></span>'+swBtn(!src||src.auto!==false,'srcAuto','')+'</div>'
+    +'<div class="setrow"><span class="rl">'+esc(t('srcExport'))+'<small>'+esc(t('srcExportN'))+'</small></span><button class="btn sm" data-act="dsExport">'+ic('ic-down')+esc(t('srcExportB'))+'</button><button class="btn sm ghost" data-act="dsJson">'+ic('ic-code')+esc(t('bJson'))+'</button></div>'
+    +'</div><p class="quiet">'+ic('ic-info')+esc(t('sourceNote'))+'</p></section>';
+}
 function swatches(){return M.COLORS.map(c=>'<button style="--c:'+c+'" data-act="colorPick" data-c="'+c+'" aria-label="'+c+'"></button>').join('')}
 
-G.VIEWS={DD,ddPop,modelView,goalText,ic,fmtD,fmtDL,fmtDS,unitL,derive,issueText,warnText,mast,tagline,tabs,statusHTML,planView,sitesView,peopleView,rulesView,insightsView,workspaceView,explainPop,dpkHTML,exportModal,paletteHTML,paletteList,kbdModal,swatches,r1,fmtN};
+G.VIEWS={DD,ddPop,modelView,goalText,ruleText,jsonModal,eqModal,eqText,bookCard,ic,fmtD,fmtDL,fmtDS,unitL,derive,issueText,warnText,mast,tagline,tabs,statusHTML,planView,sitesView,peopleView,rulesView,insightsView,workspaceView,explainPop,dpkHTML,exportModal,paletteHTML,paletteList,kbdModal,swatches,r1,fmtN};
 })(window);

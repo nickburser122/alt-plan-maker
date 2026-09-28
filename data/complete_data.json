@@ -1919,5 +1919,57 @@
       "weight": 1,
       "crit": 0
     }
+  ],
+  "routes": [],
+  "rulebook": [
+    {
+      "on": true,
+      "rel": "team",
+      "sense": "prefer",
+      "what": { "k": "cat", "v": "basic" },
+      "op": "max",
+      "n": 1,
+      "who": { "k": "gender", "v": "f" },
+      "w": 40,
+      "note": "genderRule.basic = 31"
+    },
+    {
+      "on": true,
+      "rel": "team",
+      "sense": "prefer",
+      "what": { "k": "critGe", "v": "100" },
+      "op": "min",
+      "n": 1,
+      "who": { "k": "rankGe", "v": "75" },
+      "w": 55,
+      "note": "critical places get at least one strong member"
+    },
+    {
+      "on": false,
+      "rel": "site",
+      "sense": "avoid",
+      "who": { "k": "all", "v": "" },
+      "what": { "k": "kmGe", "v": "70" },
+      "w": 35,
+      "note": "keep long trips rare"
+    },
+    {
+      "on": false,
+      "rel": "day",
+      "sense": "never",
+      "who": { "k": "gender", "v": "f" },
+      "what": { "k": "dow", "v": [false, false, false, false, false, true, false] },
+      "w": 50,
+      "note": "example: no Friday duty"
+    },
+    {
+      "on": false,
+      "rel": "with",
+      "sense": "avoid",
+      "who": { "k": "rankLe", "v": "25" },
+      "what": { "k": "rankLe", "v": "25" },
+      "w": 50,
+      "note": "two juniors should not go alone together"
+    }
   ]
 }
