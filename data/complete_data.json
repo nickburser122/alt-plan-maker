@@ -1931,7 +1931,7 @@
       "n": 1,
       "who": { "k": "gender", "v": "f" },
       "w": 40,
-      "note": "genderRule.basic = 31"
+      "note": "at most 1 woman per basic visit"
     },
     {
       "on": true,

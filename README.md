@@ -6,35 +6,40 @@ Bilingual (EN / العربية), deterministic, offline-first planner that build
 | Path | Purpose |
 |---|---|
 | `index.html#plan` | Plan window, **Recipe** (plan size + goals), schedule |
-| `#sites` | Facilities ledger (category, **location**, distance, **criticality**, type) + **Locations & distances** table |
-| `#people` | Team ledger (roles, **rank** overall + per category, home location, limits) |
-| `#rules` | Vocabulary, roles, categories, weekly rhythm, **Work/rest pattern**, **Rank ↔ criticality**, hard rules, engine |
-| `#model` | **Objective equation**, "What moves the needle" (weights + live cost share), problem size, pipeline |
-| `#insights` | KPIs (coverage, critical matched), audit, mix, load, usage |
-| `#workspace` | Workspaces, snapshots, import/export, **Load branch dataset** |
-| `tests/engine-test.html` | Engine regression + dataset scenario tests |
+| `#sites` | Facilities ledger (category, location, distance, criticality, type) + Locations & distances + direct routes |
+| `#people` | Team ledger (roles, rank overall + per category, home location, limits). The drawer holds **personal rules** and the group rules that also apply |
+| `#rules` | Rule book (filters: All / Per person / Gender / Group / Must), work/rest pattern, rank ↔ criticality, hard rules, weights, categories, week, vocabulary |
+| `#model` | Objective equation with **one-click copy as Text / LaTeX / Markdown / JSON**, plus Export (download) |
+| `#insights` | KPIs, audit, mix, load, usage |
+| `#workspace` | Workspaces, snapshots, import/export, data file source |
+| `tests/engine-test.html` | Engine regression + dataset + rule tests |
 
 ## Features
-- **Dataset**: `data/complete_data.json` (locations, facilities, criticality, pools, people ranks) loads automatically on first run; you can also load it again from Workspace or import any file with the same shape.
-- **Locations**: facilities and homes pick a location, and the distance comes from the locations table. Editing a distance updates every facility and home in that location.
-- **Criticality and rank** (0/25/50/75/100): a soft "rank match" term sends good ranks to critical places without wasting strong people on trivial ones. An optional gate ("Lead must match" or "Everyone must match") adds a tolerance rule on top.
-- **Flexible plans (Recipe)**:
-  - Size: weekly rhythm / fixed total / fit the goals.
-  - Stackable goals: `Each | In total` × `all / category / location / type / criticality ≥ / one facility` × `at least | exactly | at most` × N.
-  - Quick recipes: every place once / twice / critical ×2 + high ×1.
-  - Plans that run only on some weekdays (e.g. every Saturday, 2 visits) use the working-weekday chips plus the per-day count.
-- **Work/rest patterns**: never consecutive, 1-on-2-off, 2-on-1-off, 2/2, 3/1, 5/2, or custom (max in a row + rest ≥ N).
-- **Consistent custom dropdowns** everywhere: searchable, keyboard-navigable, RTL-aware.
-- Explainable choices: click any seat or visit to see ranked alternatives and the cost of each.
+- **Dataset loads on open**: `data/complete_data.json` is fetched on first run, when the active workspace has no facilities, or when no dataset workspace exists yet. Falls back to `*.json.txt` names. If you open the page from `file://` you get a prompt to import the file, because browsers block local fetches.
+- **Rule book** (every rule can be soft with a strength, or a hard "must"):
+  - `Place`: who prefers / avoids / only / never goes to a place, category, location, type, criticality ≥ / ≤, or distance.
+  - `Day`: who prefers / avoids / only / never works on certain weekdays.
+  - `Partner`: who prefers / avoids / only / never pairs with whom.
+  - `Team mix`: visits to X should / must have at least / at most / exactly / **none or at least** N × who (for example, women never go alone).
+  - `Visit count` (new, per person or group): who should / must do at least / at most / exactly N visits to X, **per plan or per week**.
+  - **NOT** toggle on each side inverts the matcher ("everyone except rank ≥ 75", "anywhere except location X").
+  - ⇄ flips a rule into its opposite (prefer ↔ avoid, only ↔ never, min ↔ max). 🔒 switches soft ↔ must. ↺ restores the rule book from the data file.
+  - New who-matcher **Lives in** (home location) and what-matcher **criticality ≤**.
+  - **AND / OR conditions**: `+` after any who/what picker adds up to 3 extra conditions; click the joiner to switch AND ↔ OR (e.g. "Women AND rank ≤ 50 never go farther than 40 km"). JSON: `who:{k,v,more:[{k,v,not}],join:'and'|'or'}`.
+  - **Calendar dates** on Day rules: switch `weekdays | dates` and type `2026-10-06, 2026-10-12..2026-10-15`. JSON: `what:{k:'dates',v:'…'}`.
+- **Gender rules**: `default_settings.genderRule` in the dataset (for example `"basic":"31"`) is turned into a team rule ("at most 1 woman per basic visit"). There are ready-made templates for women (none-or-2 per visit, never far, prefer near).
+- **Per-person rules**: open a person's drawer to add a Place / Day / Partner / Visit-count rule in one click and edit it inline. Group rules that match them are listed underneath.
+- **Multi-stop day routing**: new soft term `route` puts each day's stops, and each person's same-day stops, into the shortest loop from base or home. It uses exact search for up to 5 stops and nearest-neighbour above that, with the direct routes table. The agenda shows the ordered route and km for each day.
+- Work/rest patterns (global or per person), rank-to-criticality matching, locations and routes, goals, pins, explainable alternatives.
 
 ## Algorithm
-Cost J = hard terms (coverage, limits, work/rest, distinct) + Σ weight × soft term (goals, rank, fair, rotate, mix, pref, home, focus, cluster, spacing, pairs, likes).
-Greedy construction → simulated annealing (reassign, swap, relocate with goal-directed relocation, site-swap) → exhaustive polish. Best of N seeded runs, so the same data and seed always give the same plan. Runs in a Web Worker.
+J = hard terms (coverage, limits, rest, distinct, must rules) + Σ weight × soft term (goals, book, rank, fair, rotate, mix, pref, home, focus, cluster, spacing, pairs, likes).
+Rule book term: Σ_r w_r·(1.2·[site/day] + 3·[avoid-with] − 0.8·[pair-with] + 2·team_gap + 2·count_gap).
+The solver builds a greedy start, then runs simulated annealing and a polish pass, taking the best of N seeded runs. It runs in a Web Worker.
 
 ## Data / storage
-All data is stored in the browser's localStorage (`mauvine.v2.*`). Workspace model: `roles, categories, sites{loc,crit,tag,...}, people{rank,rankBy,homeLoc,...}, locations{name,km}, goals[], sizing{mode,total}, rules{runMax,offMin,rankGate,rankTol,...}`. There is no server or table API.
+All data is stored in the browser's localStorage (`mauvine.v2.*`). Rule JSON: `{rel: site|day|with|team|count, sense, who:{k,v,not?}, what:{k,v,not?}, op, n, per: plan|week, w, note}`. `data/app-config.json` sets the dataset path and the rule templates. There is no server or table API.
 
 ## Not yet / next
-- Gender pairing rule (`genderRule` in the dataset is not used yet).
-- Per-person work patterns (the pattern is global for now).
-- Multi-location travel routing (distances are all measured from base).
+- Travel-time windows (routing uses km only).
+- Nested condition groups (one AND/OR level per side for now).

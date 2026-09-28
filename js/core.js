@@ -28,8 +28,8 @@ function weekStartOf(iso,ws){const d=dowOf(iso);return addISO(iso,-((d-ws+7)%7))
 
 const COLORS=['#5A4E7C','#6F8AA3','#4D7178','#B0765A','#6E8A63','#A0596A','#8A7A4C','#4F7C72','#7B6592','#98806C'];
 const LEVELS=[0,25,50,75,100];
-const WEIGHT_KEYS=['goals','book','rank','fair','rotate','mix','pref','home','focus','cluster','spacing','pairs','likes'];
-const defaultWeights=()=>({fair:70,pref:45,home:35,rotate:60,mix:60,focus:55,cluster:45,spacing:35,pairs:50,likes:40,rank:60,goals:80,book:50});
+const WEIGHT_KEYS=['goals','book','rank','fair','rotate','mix','pref','home','route','focus','cluster','spacing','pairs','likes'];
+const defaultWeights=()=>({fair:70,pref:45,home:35,route:40,rotate:60,mix:60,focus:55,cluster:45,spacing:35,pairs:50,likes:40,rank:60,goals:80,book:50});
 const defaultUseW=()=>{const o={};WEIGHT_KEYS.forEach(k=>o[k]=true);return o};
 const defaultRules=()=>({perDay:1,runMax:1,offMin:1,distinct:true,siteGap:0,mode:'bend',nearKm:10,weekStart:0,rankGate:'off',rankTol:25});
 const defaultEngine=()=>({seed:20260907,quality:'balanced',runs:3,live:true});
@@ -60,45 +60,56 @@ function mkPerson(name,roles,o){return Object.assign({id:uid('p'),name,roles:rol
 function mkGoal(o){return Object.assign({id:uid('g'),on:true,per:'each',scope:'all',ref:'',op:'min',n:1},o||{})}
 
 const SENSES=['prefer','avoid','only','never'];
-const WHO_K=['all','person','role','gender','rankGe','rankLe'];
-const WHAT_K=['all','site','cat','loc','tag','critGe','kmGe','kmLe'];
-const RELS=['site','day','with','team'];
+const WHO_K=['all','person','role','gender','rankGe','rankLe','homeLoc'];
+const WHAT_K=['all','site','cat','loc','tag','critGe','critLe','kmGe','kmLe'];
+const RELS=['site','day','with','team','count'];
+const TEAM_OPS=['min','max','exact','ifany'],COUNT_OPS=['min','max','exact'];
 const FLIP={prefer:'avoid',avoid:'prefer',only:'never',never:'only'};
 const isHard=r=>r.sense==='only'||r.sense==='never';
-function normM(m,ks){m=m||{};return {k:ks.includes(m.k)?m.k:'all',v:m.v==null?'':String(m.v)}}
+function normC(m,ks){m=m||{};const k=ks.includes(m.k)?m.k:'all';return {k,v:m.v==null?'':String(m.v),not:!!m.not&&k!=='all'}}
+function normM(m,ks){const x=normC(m,ks);const more=(Array.isArray(m&&m.more)?m.more:[]).slice(0,3).map(c=>normC(c,ks)).filter(c=>c.k!=='all');if(more.length){x.more=more;x.join=m.join==='or'?'or':'and'}return x}
+function parseDates(s){const out=new Set();String(s||'').split(/[\s,;]+/).forEach(tk=>{const m=tk.split('..');if(m.length===2&&validISO(m[0])&&validISO(m[1])){for(let d=m[0];d<=m[1]&&out.size<800;d=addISO(d,1))out.add(d)}else if(validISO(tk))out.add(tk)});return out}
 function normRule(r){
   r=r||{};const rel=RELS.includes(r.rel)?r.rel:'site';
   let sense=SENSES.includes(r.sense)?r.sense:'avoid';
-  if(rel==='team'){if(sense==='avoid')sense='prefer';if(sense==='never')sense='only'}
+  const grp=rel==='team'||rel==='count';
+  if(grp){if(sense==='avoid')sense='prefer';if(sense==='never')sense='only'}
+  const ops=rel==='team'?TEAM_OPS:rel==='count'?COUNT_OPS:['min','max'];
   let what;
-  if(rel==='day')what={k:'dow',v:arr7(r.what&&r.what.v,false)};
+  if(rel==='day')what=r.what&&r.what.k==='dates'?{k:'dates',v:String(r.what.v||'')}:{k:'dow',v:arr7(r.what&&r.what.v,false)};
   else what=normM(r.what,rel==='with'?WHO_K:WHAT_K);
   return {id:typeof r.id==='string'&&r.id?r.id:uid('b'),on:r.on!==false,rel,sense,who:normM(r.who,WHO_K),what,
-    op:r.op==='min'?'min':'max',n:clamp(intOr(r.n,1),0,20),w:clamp(num(r.w,50),0,100),note:String(r.note||'').slice(0,160)};
+    op:ops.includes(r.op)?r.op:'max',n:clamp(intOr(r.n,1),0,rel==='count'?99:20),per:r.per==='week'?'week':'plan',w:clamp(num(r.w,50),0,100),note:String(r.note||'').slice(0,160)};
 }
 function mkRule(o){return normRule(Object.assign({on:true,rel:'site',sense:'avoid',who:{k:'all',v:''},what:{k:'all',v:''},op:'max',n:1,w:50},o||{}))}
-function whoMatch(p,m){
+function whoRaw(p,m){
   switch(m.k){
     case 'person':return p.id===m.v;
     case 'role':return p.roles.includes(m.v);
     case 'gender':return (p.gender||'')===m.v;
     case 'rankGe':return (+p.rank||0)>=(+m.v||0);
     case 'rankLe':return (+p.rank||0)<=(+m.v||0);
+    case 'homeLoc':return (p.homeLoc||'')===m.v;
   }
   return true;
 }
-function whatMatch(s,m){
+function whatRaw(s,m){
   switch(m.k){
     case 'site':return s.id===m.v;
     case 'cat':return s.cat===m.v;
     case 'loc':return s.loc===m.v;
     case 'tag':return (s.tag||'')===m.v;
     case 'critGe':return (+s.crit||0)>=(+m.v||0);
+    case 'critLe':return (+s.crit||0)<=(+m.v||0);
     case 'kmGe':return (+s.km||0)>=(+m.v||0);
     case 'kmLe':return (+s.km||0)<=(+m.v||0);
   }
   return true;
 }
+function mc(raw,o,c){const x=raw(o,c);return c.not&&c.k!=='all'?!x:x}
+function mAll(raw,o,m){let r=mc(raw,o,m);if(m.more)for(const c of m.more){const y=mc(raw,o,c);r=m.join==='or'?(r||y):(r&&y)}return r}
+function whoMatch(p,m){return mAll(whoRaw,p,m)}
+function whatMatch(s,m){return mAll(whatRaw,s,m)}
 function refResolver(ws){
   const by=(arr,v,pre)=>{if(v==null||v==='')return '';v=String(v);const x=arr.find(a=>a.id===v)||arr.find(a=>a.id===pre+v)||arr.find(a=>String(a.name).trim()===v.trim());return x?x.id:v};
   return (k,v)=>{
@@ -106,7 +117,7 @@ function refResolver(ws){
       case 'person':return by(ws.people,v,'p_');
       case 'role':return by(ws.roles,v,'r_');
       case 'cat':return by(ws.categories,v,'c_');
-      case 'loc':return by(ws.locations||[],v,'l_');
+      case 'loc':case 'homeLoc':return by(ws.locations||[],v,'l_');
       case 'site':return by(ws.sites,v,'f_');
     }
     return v==null?'':String(v);
@@ -116,8 +127,9 @@ function resolveBook(ws,list){
   const R=refResolver(ws);
   return (Array.isArray(list)?list:[]).map(r=>{
     const x=normRule(r);
-    x.who.v=R(x.who.k,x.who.v);
-    if(x.rel!=='day')x.what.v=R(x.what.k,x.what.v);
+    const rs=m=>{m.v=R(m.k,m.v);(m.more||[]).forEach(c=>c.v=R(c.k,c.v))};
+    rs(x.who);
+    if(x.rel!=='day')rs(x.what);
     if(!(r&&typeof r.id==='string'&&r.id))x.id=uid('b');
     return x;
   });
@@ -132,13 +144,14 @@ function bookForExport(ws,list){
     switch(k){
       case 'role':return String(v).replace(/^r_/,'');
       case 'cat':return /^c_/.test(v)?v.slice(2):nm(ws.categories,v);
-      case 'loc':return nm(ws.locations||[],v);
+      case 'loc':case 'homeLoc':return nm(ws.locations||[],v);
       case 'site':return nm(ws.sites,v);
     }
     return v;
   };
-  return (list||ws.book||[]).map(r=>{const o={on:r.on,rel:r.rel,sense:r.sense,who:{k:r.who.k,v:out(r.who.k,r.who.v)},what:r.rel==='day'?{k:'dow',v:r.what.v.slice()}:{k:r.what.k,v:out(r.what.k,r.what.v)},w:r.w};
-    if(r.rel==='team'){o.op=r.op;o.n=r.n}if(r.note)o.note=r.note;return o});
+  const side=(m)=>{const o={k:m.k,v:out(m.k,m.v)};if(m.not)o.not=true;if(m.more&&m.more.length){o.more=m.more.map(side);o.join=m.join}return o};
+  return (list||ws.book||[]).map(r=>{const o={on:r.on,rel:r.rel,sense:r.sense,who:side(r.who),what:r.rel==='day'?(r.what.k==='dates'?{k:'dates',v:r.what.v}:{k:'dow',v:r.what.v.slice()}):side(r.what),w:r.w};
+    if(r.rel==='team'||r.rel==='count'){o.op=r.op;o.n=r.n}if(r.rel==='count')o.per=r.per;if(r.note)o.note=r.note;return o});
 }
 
 function tplBlank(){
@@ -267,6 +280,13 @@ function fromDataset(o,name){
   if(Array.isArray(se.goals))w.goals=resolveGoals(w,se.goals);
   const book=o.rulebook||se.rulebook;
   if(Array.isArray(book))w.book=resolveBook(w,book);
+  const gr=ds.genderRule&&typeof ds.genderRule==='object'?ds.genderRule:{};
+  Object.keys(gr).forEach(kind=>{
+    const v=String(gr[kind]==null?'':gr[kind]).trim();if(!/^\d\d$/.test(v))return;
+    const cid='c_'+kind;if(!w.categories.some(c=>c.id===cid))return;
+    if(w.book.some(r=>r.rel==='team'&&r.who.k==='gender'&&r.who.v==='f'&&r.what.k==='cat'&&r.what.v===cid))return;
+    w.book.push(normRule({rel:'team',sense:'prefer',what:{k:'cat',v:cid},op:'max',n:+v[1],who:{k:'gender',v:'f'},w:40,note:'genderRule.'+kind+' = '+v}));
+  });
   syncLoc(w);
   return normalize(w);
 }
@@ -618,6 +638,7 @@ function compile(ws){
   const pRun=people.map(p=>p.runMax===''?ws.rules.runMax:+p.runMax),pOff=people.map(p=>p.offMin===''?(p.runMax===''?ws.rules.offMin:Math.max(1,ws.rules.offMin)):+p.offMin);
   const capOf=pi=>{let a=0;for(let d=0;d<D;d++)a+=pAvail[pi*D+d];let c=a*(ws.rules.perDay||10);const p=people[pi];if(p.maxLoad!=='')c=Math.min(c,+p.maxLoad);if(p.maxWeek!=='')c=Math.min(c,+p.maxWeek*nWeeks);
     const rm=pRun[pi],om=pOff[pi];if(rm>0&&span>0)c=Math.min(c,Math.ceil(span*rm/(rm+Math.max(1,om)))*(ws.rules.perDay||1));return c};
+  const wkIx={};const dayWk=dayWeek.map(w=>wkIx[w]!==undefined?wkIx[w]:(wkIx[w]=Object.keys(wkIx).length));const nWk=Object.keys(wkIx).length;
   const bk=compileBook(ws,people,sites,days,cats,roles);
   bk.warn.forEach(x=>warn.push(x));
   const dist=locDist(ws);
@@ -646,7 +667,7 @@ function compile(ws){
     pAvail,pHome:people.map(p=>+p.home||0),pPref:people.map(p=>p.pref==='near'?1:p.pref==='far'?2:0),pTarget,
     pMaxLoad:people.map(p=>p.maxLoad===''?-1:+p.maxLoad),pMaxWeek:people.map(p=>p.maxWeek===''?-1:+p.maxWeek),pIdeal,rel,aff,
     dayNum:dayNumA,dayWeek,dayFocus,roleMembers,w,pRun,pOff,sDist:Array.from(sDist),pSiteD:Array.from(pSiteD),
-    bkS:bk.bkS,bkSH:bk.bkSH,bkSR:bk.bkSR,bkD:bk.bkD,bkDH:bk.bkDH,bkDR:bk.bkDR,bkP:bk.bkP,bkPH:bk.bkPH,bkPR:bk.bkPR,team:bk.team,bookOn:bk.on,
+    bkS:bk.bkS,bkSH:bk.bkSH,bkSR:bk.bkSR,bkD:bk.bkD,bkDH:bk.bkDH,bkDR:bk.bkDR,bkP:bk.bkP,bkPH:bk.bkPH,bkPR:bk.bkPR,team:bk.team,cnt:bk.cnt,cntBy:bk.cntBy,dayWk,nWk,bookOn:bk.on,
     rules:{perDay:ws.rules.perDay,runMax:ws.rules.runMax,offMin:ws.rules.offMin,strict:ws.rules.mode==='strict',distinct:ws.rules.distinct,siteGap:ws.rules.siteGap,nearKm:ws.rules.nearKm,rankGate:gate,rankTol:ws.rules.rankTol},
     Dn,seed:ws.engine.seed,iters,runs:ws.engine.runs};
   const map={start,end,days:days.map(d=>({iso:d.iso,n:d.n,focus:d.cfg.focus})),visits,seats:seats.map(s=>({key:s.key,v:s.v,r:s.r,i:s.i})),
@@ -654,10 +675,11 @@ function compile(ws){
   return {P,map,warn};
 }
 
-const SOFT_SITE=1.2,SOFT_WITH_AV=3,SOFT_WITH_PR=.8,SOFT_TEAM=2;
+const SOFT_SITE=1.2,SOFT_WITH_AV=3,SOFT_WITH_PR=.8,SOFT_TEAM=2,SOFT_COUNT=2;
+const OPN={min:0,max:1,exact:2,ifany:3};
 function compileBook(ws,people,sites,days,cats,roles){
   const N=people.length,S=sites.length,D=days.length;
-  const out={bkS:null,bkSH:null,bkSR:null,bkD:null,bkDH:null,bkDR:null,bkP:null,bkPH:null,bkPR:null,team:[],ids:[],warn:[],on:false};
+  const out={bkS:null,bkSH:null,bkSR:null,bkD:null,bkDH:null,bkDR:null,bkP:null,bkPH:null,bkPR:null,team:[],cnt:[],cntBy:people.map(()=>[]),ids:[],warn:[],on:false};
   const list=(ws.book||[]).filter(r=>r.on);
   if(!list.length||!N)return out;
   const bw=ws.useW&&ws.useW.book===false?0:((ws.weights&&ws.weights.book!=null?ws.weights.book:50)/50);
@@ -681,7 +703,7 @@ function compileBook(ws,people,sites,days,cats,roles){
       }}
       out.on=true;
     }else if(r.rel==='day'){
-      const dm=dows.map(w=>!!r.what.v[w]);
+      let dm;if(r.what.k==='dates'){const ds=parseDates(r.what.v);dm=days.map(d=>ds.has(d.iso))}else dm=dows.map(w=>!!r.what.v[w]);
       if(!out.bkD){out.bkD=mk(N*D);out.bkDH=mk(N*D);out.bkDR=mkR(N*D)}
       for(let p=0;p<N;p++){if(!pm[p])continue;for(let d=0;d<D;d++){
         const i=p*D+d,hit=dm[d];
@@ -704,11 +726,18 @@ function compileBook(ws,people,sites,days,cats,roles){
     }else if(r.rel==='team'){
       const sm=sites.map(s=>whatMatch(s,r.what));
       if(!sm.some(Boolean)){out.warn.push({k:'rulenone',b:r.id});return}
-      out.team.push({ri,pm:pm.map(x=>x?1:0),sm:sm.map(x=>x?1:0),op:r.op==='min'?0:1,n:r.n,hard:hard?1:0,w:SOFT_TEAM*soft});
-      if(r.op==='min'&&r.n>0){
+      out.team.push({ri,pm:pm.map(x=>x?1:0),sm:sm.map(x=>x?1:0),op:OPN[r.op]||0,n:r.n,hard:hard?1:0,w:SOFT_TEAM*soft});
+      if(r.op!=='max'&&r.n>0){
         const seatsMax=sum(ws.categories.filter(c=>c.planned).map(c=>sum(Object.values(c.staff||{}))));
         if(r.n>Math.max(1,seatsMax))out.warn.push({k:'ruleteam',b:r.id,n:r.n,have:seatsMax});
       }
+      out.on=true;
+    }else if(r.rel==='count'){
+      const sm=sites.map(s=>whatMatch(s,r.what));
+      if(!sm.some(Boolean)&&r.op!=='max'){out.warn.push({k:'rulenone',b:r.id});return}
+      const ci=out.cnt.length;
+      out.cnt.push({ri,sm:sm.map(x=>x?1:0),op:OPN[r.op]||0,n:r.n,per:r.per==='week'?1:0,hard:hard?1:0,w:SOFT_COUNT*soft});
+      pm.forEach((x,p)=>{if(x)out.cntBy[p].push(ci)});
       out.on=true;
     }
   });
@@ -740,5 +769,5 @@ G.MV={$,$$,esc,uid,clamp,sum,avg,num,intOr,byId,clone,fnv,gini,mulberry32,
   COLORS,LEVELS,WEIGHT_KEYS,defaultWeights,defaultUseW,defaultRules,defaultEngine,TERM_DEFAULT,
   TEMPLATES,TEMPLATE_ORDER,blankWS,mkRole,mkCat,mkLoc,mkSite,mkPerson,mkGoal,normalize,migrateLegacy,fromDataset,syncLoc,
   Store,rangeOf,dayCfg,planDays,planTotal,plannable,goalSites,goalNeed,fpOf,fpWithLocks,compile,csvParse,csvRow,
-  SENSES,WHO_K,WHAT_K,RELS,FLIP,isHard,normRule,mkRule,whoMatch,whatMatch,resolveBook,resolveGoals,bookForExport,toDataset,mergeDataset,locDist,arr7};
+  SENSES,WHO_K,WHAT_K,RELS,TEAM_OPS,COUNT_OPS,FLIP,isHard,normRule,mkRule,whoMatch,whatMatch,resolveBook,resolveGoals,parseDates,bookForExport,toDataset,mergeDataset,locDist,arr7};
 })(window);

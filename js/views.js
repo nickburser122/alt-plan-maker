@@ -105,6 +105,7 @@ function issueText(x,D){
     case 'ruleday':return t('i_ruleday',{p:pn(x.p),d:vd(x.v),r:bn(x.b)});
     case 'rulewith':case 'rulewithsoft':return t('i_rulewith',{p:pn(x.p),q:pn(x.q),s:vs(x.v),d:vd(x.v),r:bn(x.b)});
     case 'ruleteam':return t('i_ruleteam',{s:sn(x.s),d:vd(x.v),n:x.n,max:x.max,r:bn(x.b)});
+    case 'rulecount':return t(x.w?'i_rulecountW':'i_rulecount',{p:pn(x.p),n:x.n,max:x.max,w:x.w,r:bn(x.b)});
   }
   return x.k;
   function bn(i){const id=m.book&&m.book[i];const r=id&&byId(ws.book||[],id);return r?ruleText(r):'—'}
@@ -298,7 +299,8 @@ function agendaHTML(D){
     const vs=D.byDay[d];
     const foc=dd.focus==='near'?t('fNear'):dd.focus==='far'?t('fFar'):(catOf(dd.focus)?catOf(dd.focus).name:'');
     const km=sum(vs.map(v=>{const s=D.siteOfV(v);return s?+s.km:0}));
-    h+='<tbody class="dayg" id="day-'+dd.iso+'" style="--i:'+Math.min(d,14)+'"><tr class="dayhead"><td colspan="'+(2+roles.length)+'"><span class="dh"><b>'+esc(arr('dows')[dowOf(dd.iso)])+'</b> '+esc(fmtDS(dd.iso))+'</span><span class="dhmeta">'+esc(t('nVisits',{n:vs.length}))+' · '+r1(km)+' '+unitL()+(foc?' · '+esc(t('focus'))+': '+esc(foc):'')+'</span></td></tr>';
+    const rt=r.stats.dayRoute&&r.stats.dayRoute[d];const rts=rt&&rt.sites.length>1?'<span class="droute">'+ic('ic-route')+rt.sites.map(si=>{const x=byId(ws.sites,m.sites[si]);return esc(x?x.name:'—')}).join(' → ')+' <b>'+r1(rt.km)+' '+unitL()+'</b></span>':'';
+    h+='<tbody class="dayg" id="day-'+dd.iso+'" style="--i:'+Math.min(d,14)+'"><tr class="dayhead"><td colspan="'+(2+roles.length)+'"><span class="dh"><b>'+esc(arr('dows')[dowOf(dd.iso)])+'</b> '+esc(fmtDS(dd.iso))+'</span><span class="dhmeta">'+esc(t('nVisits',{n:vs.length}))+' · '+r1(km)+' '+unitL()+(foc?' · '+esc(t('focus'))+': '+esc(foc):'')+'</span>'+rts+'</td></tr>';
     vs.forEach(v=>{
       const vis=m.visits[v],s=D.siteOfV(v),cat=s?catOf(s.cat):null;
       const lockedS=!!ws.locks.sites[vis.key];
@@ -489,9 +491,14 @@ function locationsCard(){
 }
 function personRulesList(p){
   const ws=A().ws;
-  const mine=(ws.book||[]).filter(r=>(r.who.k==='person'&&r.who.v===p.id)||(r.rel==='with'&&r.what.k==='person'&&r.what.v===p.id));
-  return '<div class="prules">'+mine.map(r=>'<span class="token'+(r.on?'':' off')+(M.isHard(r)?' hard':'')+'">'+(M.isHard(r)?ic('ic-lock'):'')+esc(ruleText(r))+'<button data-act="bookFlip" data-id="'+esc(r.id)+'" title="'+esc(t('bFlip'))+'">'+ic('ic-flip')+'</button></span>').join('')
-    +'<button class="btn sm ghost" data-act="bookForPerson" data-id="'+esc(p.id)+'">'+ic('ic-plus')+esc(t('bAddFor'))+'</button></div>';
+  const own=r=>(r.who.k==='person'&&r.who.v===p.id)||(r.rel==='with'&&r.what.k==='person'&&r.what.v===p.id);
+  const mine=(ws.book||[]).filter(own);
+  const inh=(ws.book||[]).filter(r=>!own(r)&&r.on&&r.rel!=='team'&&r.who.k!=='all'&&M.whoMatch(p,r.who));
+  const tok=(r,mine)=>'<span class="token'+(r.on?'':' off')+(M.isHard(r)?' hard':'')+(mine?'':' inh')+'">'+(M.isHard(r)?ic('ic-lock'):'')+esc(ruleText(r))+(mine?'<button data-act="bookOn" data-id="'+esc(r.id)+'" title="'+esc(t('active'))+'">'+ic(r.on?'ic-check':'ic-minus')+'</button><button data-act="bookFlip" data-id="'+esc(r.id)+'" title="'+esc(t('bFlip'))+'">'+ic('ic-flip')+'</button><button data-act="bookDel" data-id="'+esc(r.id)+'" title="'+esc(t('remove'))+'">'+ic('ic-x')+'</button>':'')+'</span>';
+  const vio=bookVio();
+  return (mine.length?'<div class="brules compact">'+mine.map(r=>bookRow(r,vio?vio[r.id]:null)).join('')+'</div>':'')
+    +(inh.length?'<div class="prules"><span class="tiny muted">'+esc(t('bInherited'))+'</span>'+inh.map(r=>tok(r,false)).join('')+'</div>':'')
+    +'<div class="prules add"><span class="tiny muted">'+esc(t('bAddFor'))+'</span>'+[['site','ic-build','br_site'],['day','ic-cal','br_day'],['with','ic-users','br_with'],['count','ic-target','br_count']].map(([k,i,l])=>'<button class="btn sm ghost" data-act="bookForPerson" data-kind="'+k+'" data-id="'+esc(p.id)+'">'+ic(i)+esc(t(l))+'</button>').join('')+'</div>';
 }
 function tokenBox(list,act,id,field,opts,labelOf){
   let h='<div class="tokens">'+list.map(x=>'<span class="token">'+esc(labelOf(x))+'<button data-act="'+act+'" data-id="'+esc(id)+'" data-f="'+field+'" data-v="'+esc(x)+'">'+ic('ic-x')+'</button></span>').join('');
@@ -542,7 +549,7 @@ function peopleView(){
         +'<div><span class="lbl">'+esc(t('gender'))+'</span><div class="seg">'+[['',t('g_none')],['m',t('g_m')],['f',t('g_f')]].map(([k,l])=>'<button class="'+((p.gender||'')===k?'on':'')+'" data-act="personGender" data-id="'+esc(p.id)+'" data-v="'+k+'">'+esc(l)+'</button>').join('')+'</div></div>'
         +'<div><span class="lbl">'+esc(t('ownPattern'))+'</span><div class="row" style="gap:8px">'+swBtn(p.runMax!=='','personPat','data-id="'+esc(p.id)+'"',true)
           +(p.runMax!==''?'<span class="sc tiny">'+esc(t('patWork'))+stepper('personRun','data-id="'+esc(p.id)+'" data-k="runMax"',p.runMax||'∞')+'</span><span class="sc tiny">'+esc(t('patRest'))+stepper('personRun','data-id="'+esc(p.id)+'" data-k="offMin"',p.offMin===''?0:p.offMin)+'</span>'+patternStrip(+p.runMax,p.offMin===''?1:+p.offMin):'<span class="muted tiny">'+esc(t('usesGlobal'))+'</span>')+'</div></div>'
-        +'<div><span class="lbl">'+esc(t('personRules'))+'</span>'+personRulesList(p)+'</div>'
+        +'<div class="span-all"><span class="lbl">'+esc(t('personRules'))+'</span>'+personRulesList(p)+'</div>'
         +'</div></td></tr>';
     }
   });
@@ -641,7 +648,7 @@ function modelView(){
   const rows=E.soft;
   const hard=E.hard.map(x=>[x[0],x[1],x[2]]);
   let h='<section class="card" id="equation-card"><div class="card-head"><div><div class="kicker">'+esc(t('kModel'))+'</div><h2 class="ctitle">'+esc(t('modelT'))+'</h2></div><div class="row">'+(bd?'<span class="chip">'+esc(t('cost'))+' '+fmtN(D.r.cost)+'</span>':'<button class="btn sm" data-act="solve">'+ic('ic-wand')+esc(t('solve'))+'</button>')
-    +'<button class="btn sm" data-act="eqCopyQuick" title="'+esc(t('eqCopyN'))+'">'+ic('ic-copy')+esc(t('eqCopy'))+'</button><button class="btn sm primary" data-act="eqExport">'+ic('ic-down')+esc(t('eqExport'))+'</button></div></div>';
+    +'<div class="eqbar"><span class="lbl">'+esc(t('eqCopy'))+'</span><div class="seg mini">'+[['text','Text'],['latex','LaTeX'],['md','MD'],['json','JSON']].map(([k,l])=>'<button data-act="eqCopyAs" data-v="'+k+'" title="'+esc(t('eqCopy'))+' · '+l+'">'+ic('ic-copy')+l+'</button>').join('')+'</div></div><button class="btn sm primary" data-act="eqExport">'+ic('ic-down')+esc(t('eqExport'))+'</button></div></div>';
   const on=rows.filter(r=>W[r[1]]>0);
   h+='<div class="eq" dir="ltr"><span class="eqf">min&nbsp;J =</span> '+hard.map(x=>'<span class="eqt hard">'+esc(t(x[1]))+'</span>').join(' + ')+(on.length?' + '+on.map(r=>'<span class="eqt"><b>'+ws.weights[r[1]]+'</b>·'+esc(t(r[2]))+'</span>').join(' + '):'')+'</div>';
   h+='<p class="quiet">'+ic('ic-info')+esc(t('modelNote'))+'</p></section>';
@@ -696,7 +703,7 @@ function insightsView(){
     +chk(t('a_bounds'),cnt('sitemax')+cnt('sitemin'))
     +chk(t('a_gap'),cnt('sitegap'),R.siteGap>0)
     +chk(t('a_pairs'),cnt('avoid'))
-    +chk(t('a_book'),cnt('rulesite')+cnt('ruleday')+cnt('rulewith')+D.iss.filter(x=>x.k==='ruleteam'&&x.sev==='warn').length,(ws.book||[]).some(r=>r.on))
+    +chk(t('a_book'),cnt('rulesite')+cnt('ruleday')+cnt('rulewith')+D.iss.filter(x=>(x.k==='ruleteam'||x.k==='rulecount')&&x.sev==='warn').length,(ws.book||[]).some(r=>r.on))
     +'</div></section>';
   const cats=m.cats.map(id=>catOf(id)).filter(Boolean);
   const tot=Math.max(1,sum(st.catCount));
@@ -802,6 +809,7 @@ function whoVOpts(k){
   if(k==='role')return ws.roles.map(r=>[r.id,r.name,r.color]);
   if(k==='gender')return [['m',t('g_m')],['f',t('g_f')]];
   if(k==='rankGe'||k==='rankLe')return lvlSel();
+  if(k==='homeLoc')return (ws.locations||[]).filter(l=>ws.people.some(p=>p.homeLoc===l.id)).sort((a,b)=>a.km-b.km).map(l=>[l.id,l.name,null,ws.people.filter(p=>p.homeLoc===l.id).length+'']);
   return [];
 }
 function whatVOpts(k){
@@ -810,31 +818,43 @@ function whatVOpts(k){
   if(k==='cat')return ws.categories.map(c=>[c.id,c.name,c.color]);
   if(k==='loc')return (ws.locations||[]).slice().sort((a,b)=>a.km-b.km).map(l=>[l.id,l.name,null,r1(l.km)+' '+unitL()]);
   if(k==='tag'){const s=new Set();ws.sites.forEach(x=>{if(x.tag)s.add(x.tag)});return Array.from(s).sort().map(x=>[x,x])}
-  if(k==='critGe')return lvlSel();
+  if(k==='critGe'||k==='critLe')return lvlSel();
   return [];
 }
 function mLabel(m,isWho){
+  const one=mLabel1(m,isWho);
+  return m.more&&m.more.length?one+m.more.map(c=>' '+t(m.join==='or'?'bj_or':'bj_and')+' '+mLabel1(c,isWho)).join(''):one;
+}
+function mLabel1(m,isWho){
   const ws=A().ws;
   if(m.k==='all')return t(isWho?'bw_all':'bx_all');
   const nm=(arr,id)=>{const x=byId(arr,id);return x?x.name:'?'};
   let v=m.v;
   if(m.k==='person')v=nm(ws.people,m.v);else if(m.k==='role')v=nm(ws.roles,m.v);else if(m.k==='gender')v=t('g_'+m.v);
-  else if(m.k==='site')v=nm(ws.sites,m.v);else if(m.k==='cat')v=nm(ws.categories,m.v);else if(m.k==='loc')v=nm(ws.locations||[],m.v);
+  else if(m.k==='site')v=nm(ws.sites,m.v);else if(m.k==='cat')v=nm(ws.categories,m.v);else if(m.k==='loc'||m.k==='homeLoc')v=nm(ws.locations||[],m.v);
   else if(m.k==='kmGe'||m.k==='kmLe')v=m.v+' '+unitL();
-  return t((isWho?'bw_':'bx_')+m.k)+' '+v;
+  return (m.not?t('bNotW')+' ':'')+t((isWho?'bw_':'bx_')+m.k)+' '+v;
 }
 function ruleText(r){
   if(!r)return '—';
   if(r.rel==='team')return t('bt_sent',{what:mLabel(r.what),sense:t('bs_team_'+r.sense),op:t('op_'+r.op),n:r.n,who:mLabel(r.who,true)});
+  if(r.rel==='count')return t('bc_sent',{who:mLabel(r.who,true),sense:t('bs_count_'+r.sense),op:t('op_'+r.op),n:r.n,what:mLabel(r.what),per:t(r.per==='week'?'bc_week':'bc_plan')});
   let obj;
-  if(r.rel==='day')obj=r.what.v.map((x,i)=>x?arr('dows')[i]:null).filter(Boolean).join(', ')||'—';
+  if(r.rel==='day'&&r.what.k==='dates')obj=r.what.v||'—';
+  else if(r.rel==='day')obj=r.what.v.map((x,i)=>x?arr('dows')[i]:null).filter(Boolean).join(', ')||'—';
   else obj=mLabel(r.what,r.rel==='with');
   return mLabel(r.who,true)+' '+t('bs_'+r.rel+'_'+r.sense)+' '+obj;
 }
 function mPicker(rid,side,m,isWho,rel){
-  const kOpts=isWho?whoKOpts():whatKOpts();
-  const at='data-id="'+esc(rid)+'" data-side="'+side+'"';
-  let h=dd('book',at+' data-f="k"',m.k,kOpts,{cls:'bdd'});
+  let h='<span class="mgrp">'+mPicker1(rid,side,m,isWho,'');
+  (m.more||[]).forEach((c,i)=>{h+='<button class="joinbtn" data-act="bookJoin" data-id="'+esc(rid)+'" data-side="'+side+'">'+esc(t(m.join==='or'?'bj_or':'bj_and'))+'</button>'+mPicker1(rid,side,c,isWho,i)+'<button class="ibtn xs" data-act="bookLess" data-id="'+esc(rid)+'" data-side="'+side+'" data-i="'+i+'" title="'+esc(t('remove'))+'">'+ic('ic-x')+'</button>'});
+  if(m.k!=='all'&&(m.more||[]).length<3)h+='<button class="ibtn xs" data-act="bookMore" data-id="'+esc(rid)+'" data-side="'+side+'" title="'+esc(t('bMore'))+'">'+ic('ic-plus')+'</button>';
+  return h+'</span>';
+}
+function mPicker1(rid,side,m,isWho,mi){
+  const kOpts=(isWho?whoKOpts():whatKOpts()).filter(o=>mi===''||o[0]!=='all');
+  const at='data-id="'+esc(rid)+'" data-side="'+side+'"'+(mi===''?'':' data-mi="'+mi+'"');
+  let h=(m.k!=='all'?'<button class="notbtn'+(m.not?' on':'')+'" data-act="bookNot" '+at+' title="'+esc(t('bNotT'))+'">'+esc(t('bNot'))+'</button>':'')+dd('book',at+' data-f="k"',m.k,kOpts,{cls:'bdd'});
   if(m.k==='kmGe'||m.k==='kmLe')h+='<span class="numwrap"><input class="inp num s" type="number" min="0" data-bind="bookNum" '+at+' value="'+esc(m.v)+'"><span class="unit">'+unitL()+'</span></span>';
   else if(m.k!=='all'){const vo=isWho?whoVOpts(m.k):whatVOpts(m.k);h+=dd('book',at+' data-f="v"',m.v,vo,{search:vo.length>8,ph:vo.some(o=>String(o[0])===String(m.v))?null:t('pick'),cls:'bdd'})}
   return h;
@@ -843,17 +863,26 @@ function bookRow(r,vio){
   const hard=M.isHard(r);
   const id=esc(r.id);
   const relOpts=M.RELS.map(k=>[k,t('br_'+k)]);
-  const senses=r.rel==='team'?['prefer','only']:M.SENSES;
+  const grp=r.rel==='team'||r.rel==='count';
+  const senses=grp?['prefer','only']:M.SENSES;
   const sOpts=senses.map(k=>[k,t('bs_'+r.rel+'_'+k)]);
   let sent='';
   if(r.rel==='team'){
     sent='<span class="gw">'+esc(t('bt_visitsTo'))+'</span>'+mPicker(r.id,'what',r.what,false,r.rel)
       +dd('book','data-id="'+id+'" data-f="sense"',r.sense,sOpts,{cls:'bdd sense pos '+(hard?'hard':'soft')})
-      +dd('book','data-id="'+id+'" data-f="op"',r.op,[['min',t('op_min')],['max',t('op_max')]],{cls:'bdd'})
+      +dd('book','data-id="'+id+'" data-f="op"',r.op,M.TEAM_OPS.map(k=>[k,t('op_'+k)]),{cls:'bdd'})
       +stepper('bookN','data-id="'+id+'"',r.n)+mPicker(r.id,'who',r.who,true,r.rel);
+  }else if(r.rel==='count'){
+    sent=mPicker(r.id,'who',r.who,true,r.rel)
+      +dd('book','data-id="'+id+'" data-f="sense"',r.sense,sOpts,{cls:'bdd sense pos '+(hard?'hard':'soft')})
+      +dd('book','data-id="'+id+'" data-f="op"',r.op,M.COUNT_OPS.map(k=>[k,t('op_'+k)]),{cls:'bdd'})
+      +stepper('bookN','data-id="'+id+'"',r.n)+'<span class="gw">'+esc(t('bc_visitsTo'))+'</span>'+mPicker(r.id,'what',r.what,false,r.rel)
+      +'<div class="seg mini"><button class="'+(r.per!=='week'?'on':'')+'" data-act="bookPer" data-id="'+id+'">'+esc(t('bc_plan'))+'</button><button class="'+(r.per==='week'?'on':'')+'" data-act="bookPer" data-id="'+id+'">'+esc(t('bc_week'))+'</button></div>';
   }else{
     sent=mPicker(r.id,'who',r.who,true,r.rel)+dd('book','data-id="'+id+'" data-f="sense"',r.sense,sOpts,{cls:'bdd sense '+(r.sense==='prefer'||r.sense==='only'?'pos':'neg')+' '+(hard?'hard':'soft')});
-    if(r.rel==='day'){const n=arr('dows1');const w0=A().ws.rules.weekStart;sent+='<div class="wds">';for(let k=0;k<7;k++){const i=(w0+k)%7;sent+='<button class="wd'+(r.what.v[i]?' on':'')+'" data-act="bookDow" data-id="'+id+'" data-i="'+i+'" title="'+esc(arr('dows')[i])+'">'+n[i]+'</button>'}sent+='</div>'}
+    if(r.rel==='day'){const dts=r.what.k==='dates';sent+='<div class="seg mini"><button class="'+(dts?'':'on')+'" data-act="bookDayMode" data-id="'+id+'" data-v="dow">'+esc(t('bd_dow'))+'</button><button class="'+(dts?'on':'')+'" data-act="bookDayMode" data-id="'+id+'" data-v="dates">'+esc(t('bd_dates'))+'</button></div>';
+      if(dts)sent+='<input class="inp slim bdates" dir="ltr" data-bind="bookDates" data-id="'+id+'" value="'+esc(r.what.v)+'" placeholder="2026-10-06, 2026-10-12..2026-10-15">';
+      else{const n=arr('dows1');const w0=A().ws.rules.weekStart;sent+='<div class="wds">';for(let k=0;k<7;k++){const i=(w0+k)%7;sent+='<button class="wd'+(r.what.v[i]?' on':'')+'" data-act="bookDow" data-id="'+id+'" data-i="'+i+'" title="'+esc(arr('dows')[i])+'">'+n[i]+'</button>'}sent+='</div>'}}
     else sent+=mPicker(r.id,'what',r.what,r.rel==='with',r.rel);
   }
   const vc=vio==null?'':(vio?'<span class="chip '+(hard?'bad':'warn')+'" title="'+esc(t('bookVio'))+'">'+ic('ic-alert')+vio+'</span>':'<span class="chip good">'+ic('ic-check')+'</span>');
@@ -873,19 +902,32 @@ function bookVio(){
   D.iss.forEach(x=>{if(x.b!=null&&ids[x.b]!=null&&/^rule/.test(x.k))c[ids[x.b]]++});
   return c;
 }
+const BOOK_F=[['all','bf_all'],['person','bf_person'],['gender','bf_gender'],['group','bf_group'],['hard','bf_hard']];
+function bookKind(r,k){
+  const pk=r.who.k==='person'||r.what.k==='person';
+  if(k==='person')return pk;
+  if(k==='gender')return r.who.k==='gender'||r.what.k==='gender';
+  if(k==='group')return !pk;
+  if(k==='hard')return M.isHard(r);
+  return true;
+}
 function bookCard(){
   const a=A(),ws=a.ws,book=ws.book||[];
   const vio=bookVio();
   const tpl=(a.config&&a.config.ruleTemplates)||[];
+  const fk=a.f.bookQ||'all';
   const addOpts=[['__blank',t('bBlank')]].concat(tpl.map((x,i)=>[String(i),(x.label&&(x.label[L()]||x.label.en))||('#'+(i+1))]));
+  const list=book.filter(r=>bookKind(r,fk));
   let h='<section class="card" id="book-card"><div class="card-head"><div><div class="kicker">'+esc(t('kBook'))+'</div><h2 class="ctitle">'+esc(t('bookT'))+' <span class="muted mono tiny">'+book.filter(r=>r.on).length+' / '+book.length+'</span></h2></div>'
-    +'<div class="row">'+dd('bookAdd','','',addOpts,{ph:'+ '+t('bAdd'),cls:'ghostdd'})
-    +(book.length?'<button class="btn sm ghost" data-act="bookAllOn" title="'+esc(t('bAllOn'))+'">'+ic('ic-check')+esc(t('bAllOn'))+'</button>':'')
-    +'<button class="btn sm" data-act="bookJson">'+ic('ic-code')+esc(t('bJson'))+'</button></div></div>';
+    +'<div class="row">'+dd('bookAdd','','',addOpts,{ph:'+ '+t('bAdd'),cls:'btn-dd'})
+    +'<button class="ibtn" data-act="bookJson" title="'+esc(t('bJson'))+'">'+ic('ic-code')+'</button>'
+    +'<button class="ibtn" data-act="bookRestore" title="'+esc(t('bRestore'))+'">'+ic('ic-undo')+'</button>'
+    +(book.length?'<button class="ibtn" data-act="bookAllOn" title="'+esc(t('bAllOn'))+'">'+ic('ic-check')+'</button>':'')+'</div></div>';
+  if(book.length>3)h+='<div class="toolbar slim">'+BOOK_F.map(([k,l])=>{const n=book.filter(r=>bookKind(r,k)).length;return n||k==='all'?'<button class="fchip'+(fk===k?' on':'')+'" data-act="bookFilter" data-v="'+k+'">'+esc(t(l))+' <small>'+n+'</small></button>':''}).join('')+'</div>';
   if(!book.length)h+='<div class="goal-empty">'+ic('ic-flip')+'<span>'+esc(t('bookEmpty'))+'</span></div>';
-  else h+='<div class="brules">'+book.map(r=>bookRow(r,vio?vio[r.id]:null)).join('')+'</div>';
-  h+='<div class="blegend"><span><b class="pos">'+esc(t('bLgPrefer'))+'</b> ⇄ <b class="neg">'+esc(t('bLgAvoid'))+'</b></span><span>'+ic('ic-lock')+'<b class="pos">'+esc(t('bLgOnly'))+'</b> ⇄ <b class="neg">'+esc(t('bLgNever'))+'</b></span><span class="muted">'+ic('ic-flip')+esc(t('bLgFlip'))+'</span></div>';
-  h+='<p class="quiet">'+ic('ic-info')+esc(t('bookNote'))+'</p></section>';
+  else if(!list.length)h+='<div class="goal-empty">'+esc(t('noMatch'))+'</div>';
+  else h+='<div class="brules">'+list.map(r=>bookRow(r,vio?vio[r.id]:null)).join('')+'</div>';
+  h+='<details class="hint"><summary>'+ic('ic-info')+esc(t('bHowT'))+'</summary><div class="blegend"><span><b class="pos">'+esc(t('bLgPrefer'))+'</b> ⇄ <b class="neg">'+esc(t('bLgAvoid'))+'</b></span><span>'+ic('ic-lock')+'<b class="pos">'+esc(t('bLgOnly'))+'</b> ⇄ <b class="neg">'+esc(t('bLgNever'))+'</b></span><span>'+ic('ic-flip')+esc(t('bLgFlip'))+'</span><span><b class="notdemo">'+esc(t('bNot'))+'</b>'+esc(t('bLgNot'))+'</span></div><p class="quiet">'+esc(t('bookNote'))+'</p></details></section>';
   return h;
 }
 function jsonModal(st){
@@ -907,13 +949,14 @@ function eqDefs(){
     ],
     soft:[
       ['goals','goals','t_goals','Σ 120·w·short + 250·w·over','\\sum_g 120\\,w\\,\\mathrm{short}_g + 250\\,w\\,\\mathrm{over}_g'],
-      ['book','book','t_book','Σ_r w_r·(1.2·[site/day] + 3·[avoid-with] − 0.8·[pair-with] + 2·short)','\\sum_r w_r\\big(1.2\\,[\\mathrm{site/day}] + 3\\,[\\mathrm{avoid}] - 0.8\\,[\\mathrm{pair}] + 2\\,\\mathrm{short}_r\\big)'],
+      ['book','book','t_book','Σ_r w_r·(1.2·[site/day] + 3·[avoid-with] − 0.8·[pair-with] + 2·team_gap + 2·count_gap)','\\sum_r w_r\\big(1.2\\,[\\mathrm{site/day}] + 3\\,[\\mathrm{avoid}] - 0.8\\,[\\mathrm{pair}] + 2\\,\\mathrm{team}_r + 2\\,\\mathrm{count}_r\\big)'],
       ['rank','rank','t_rank','Σ w·(4·def·(1.5+4·def) + 0.6·waste)','\\sum w\\big(4\\,\\delta(1.5+4\\delta) + 0.6\\,\\omega\\big)'],
       ['fair','fair','t_fair','Σ 1.5·w·(load − target)²','\\sum_p 1.5\\,w\\,(L_p - T_p)^2'],
       ['rotate','rotate','t_rotate','Σ 1.2·w·(uses − expected)²','\\sum_s 1.2\\,w\\,(u_s - e_s)^2'],
       ['mix','mix','t_mix','Σ w·(count − target)²','\\sum_c w\\,(n_c - t_c)^2'],
       ['pref','pref','t_pref','2·w·km/Dmax','2\\,w\\,\\frac{km}{D_{max}}'],
       ['home','home','t_home','2·w·dist(home, site)/Dmax','2\\,w\\,\\frac{d(h_p,s)}{D_{max}}'],
+      ['route','route','t_route','2·w·(tour_km − solo_km/k)/Dmax per multi-stop day','2\\,w\\,\\frac{\\mathrm{tour}-\\overline{\\mathrm{solo}}}{D_{max}}'],
       ['focus','focus','t_focus','4·w·Δkm/Dmax  |  6·w','4\\,w\\,\\frac{\\Delta km}{D_{max}} \\;\\vert\\; 6\\,w'],
       ['cluster','cluster','t_cluster','3·w·span/Dmax + 2·w·(zones−1)','3\\,w\\,\\frac{\\mathrm{span}}{D_{max}} + 2\\,w\\,(z-1)'],
       ['spacing','spacing','t_spacing','2·w·((ideal−gap)/ideal)²','2\\,w\\left(\\frac{g^*-g}{g^*}\\right)^2'],

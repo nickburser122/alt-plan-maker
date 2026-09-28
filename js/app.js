@@ -420,14 +420,15 @@ function paletteItems(q){
     {label:t('pr_once'),kind:t('presets'),icon:'ic-target',run:()=>applyPreset('once')},
     {label:t('pr_twice'),kind:t('presets'),icon:'ic-target',run:()=>applyPreset('twice')},
     {label:t('kbdT'),kind:t('palCmd'),icon:'ic-keyboard',run:()=>openModal(V.kbdModal())},
-    {label:t('bAdd'),kind:t('bookT'),icon:'ic-flip',run:()=>{APP.view='rules';render();addRule('__blank')}},
+    {label:t('bAdd'),kind:t('bookT'),icon:'ic-flip',run:()=>addRule('__blank')},
+    {label:t('bRestore'),kind:t('bookT'),icon:'ic-undo',run:restoreBook},
     {label:t('bJson'),kind:t('bookT'),icon:'ic-code',run:()=>openJson('book')},
     {label:t('eqExport'),kind:t('kModel'),icon:'ic-sigma',run:openEq},
     {label:t('eqCopy'),kind:t('kModel'),icon:'ic-copy',run:()=>copyText(V.eqText('text'))},
     {label:t('srcKeep'),kind:t('kSource'),icon:'ic-undo',run:()=>refreshSource(true)},
     {label:t('srcExportB'),kind:t('kSource'),icon:'ic-down',run:()=>act.dsExport()}
   ];
-  (APP.config.ruleTemplates||[]).forEach((x,i)=>cmds.push({label:t('bAdd')+': '+((x.label&&(x.label[I.lang()]||x.label.en))||'#'+(i+1)),kind:t('bookT'),icon:'ic-flip',run:()=>{APP.view='rules';render();addRule(String(i))}}));
+  (APP.config.ruleTemplates||[]).forEach((x,i)=>cmds.push({label:t('bAdd')+': '+((x.label&&(x.label[I.lang()]||x.label.en))||'#'+(i+1)),kind:t('bookT'),icon:'ic-flip',run:()=>addRule(String(i))}));
   [['plan','tabPlan','ic-cal'],['sites','tabSites','ic-build'],['people','tabPeople','ic-users'],['rules','tabRules','ic-sliders'],['model','tabModel','ic-sigma'],['insights','tabInsights','ic-chart'],['workspace','tabWs','ic-layers']].forEach(([v,l,i])=>cmds.push({label:t('goTo')+' '+t(l),kind:t('palCmd'),icon:i,run:()=>{APP.view=v;render()}}));
   M.TEMPLATE_ORDER.forEach(k=>cmds.push({label:t('newWs')+': '+t('tpl_'+k),kind:t('palCmd'),icon:'ic-layers',run:()=>newWorkspace(k)}));
   APP.ix.list.filter(x=>x.id!==ws.id).forEach(x=>cmds.push({label:t('open_')+': '+x.name,kind:t('tabWs'),icon:'ic-layers',run:()=>{const w=Store.load(x.id);if(w)switchTo(w)}}));
@@ -495,21 +496,29 @@ function applyBind(bd,ds,v){
     case 'goal':commit(ws=>{const g=byId(ws.goals,ds.id);if(!g)return;g[ds.f]=v;if(ds.f==='scope'){g.ref=v==='crit'?'75':''}});break;
     case 'preset':applyPreset(v);break;
     case 'book':commit(ws=>{const r=byId(ws.book,ds.id);if(!r)return;const f=ds.f,side=ds.side;
-      if(f==='rel'){r.rel=v;r.what=v==='day'?{k:'dow',v:[false,false,false,false,false,true,true]}:{k:'all',v:''}}
-      else if(side){r[side][f]=v;if(f==='k')r[side].v=({rankGe:'75',rankLe:'25',critGe:'75',kmGe:'40',kmLe:'15',gender:'f'})[v]||''}
+      if(f==='rel'){r.rel=v;r.what=v==='day'?{k:'dow',v:[false,false,false,false,false,true,true]}:{k:'all',v:''};if(v==='count'){r.op='min';r.n=2;r.sense='prefer';r.per='plan'}if(v==='team'){r.op='max';r.n=1;r.sense='prefer'}}
+      else if(side&&ds.mi!=null&&r[side].more){const c=r[side].more[+ds.mi];c[f]=v;if(f==='k')c.v=({rankGe:'75',rankLe:'25',critGe:'75',critLe:'25',kmGe:'40',kmLe:'15',gender:'f'})[v]||''}
+      else if(side){r[side][f]=v;if(f==='k'){r[side].v=({rankGe:'75',rankLe:'25',critGe:'75',critLe:'25',kmGe:'40',kmLe:'15',gender:'f'})[v]||'';if(v==='all')r[side].not=false}}
       else r[f]=v;
       Object.assign(r,M.normRule(r))});break;
     case 'bookAdd':addRule(v);break;
     case 'route':commit(ws=>{const r=byId(ws.routes,ds.id);if(r){r[ds.f]=v;if(r.a===r.b)ws.routes=ws.routes.filter(x=>x!==r)}});break;
   }
 }
-function addRule(v,o){
+async function restoreBook(){
+  const url=(APP.ws.source&&APP.ws.source.url)||APP.config.dataset;
+  try{const o=JSON.parse((await fetchFirst([url].concat(dsUrls()))).txt);const nw=M.fromDataset(o,APP.ws.name);const list=M.bookForExport(nw);commit(ws=>{ws.book=M.resolveBook(ws,list)});toast(t('bookApplied',{n:list.length}))}
+  catch(e){toast(t('invalid',{e:e.message}),'warn')}
+}
+function addRule(v,o,stay){
   let id=null;
   commit(ws=>{let r;
     if(o)r=M.mkRule(o);
     else if(v&&v!=='__blank'){const tp=(APP.config.ruleTemplates||[])[+v];r=tp?M.resolveBook(ws,[tp.rule])[0]:M.mkRule()}
     else r=M.mkRule();
     ws.book=ws.book||[];ws.book.unshift(r);id=r.id});
+  if(stay)return id;
+  if(APP.view!=='rules'){APP.view='rules';render()}
   setTimeout(()=>{const el=document.querySelector('[data-rid="'+id+'"]');if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1400)}},60);
   return id;
 }
@@ -535,10 +544,12 @@ function applyJson(){
   }catch(e){toast(t('invalid',{e:e.message}),'warn')}
 }
 async function fetchText(url){const r=await fetch(url,{cache:'no-cache'});if(!r.ok)throw new Error(r.status+' '+url);return await r.text()}
+async function fetchFirst(urls){let err;for(const u of Array.from(new Set(urls.filter(Boolean)))){try{return {url:u,txt:await fetchText(u)}}catch(e){err=e}}throw err||new Error('no dataset')}
+const dsUrls=()=>[APP.config.dataset,'data/complete_data.json','data/complete_data.json.txt'];
 async function checkSource(){
   const ws=APP.ws,src=ws.source;
   if(!src||src.auto===false||location.protocol==='file:'||APP.config.autoCheck===false)return;
-  try{const txt=await fetchText(src.url||APP.config.dataset);const h=M.fnv(txt);
+  try{const txt=(await fetchFirst([src.url].concat(dsUrls()))).txt;const h=M.fnv(txt);
     if(h!==src.hash&&APP.ws===ws){APP.srcUpdate={hash:h};if(APP.view==='workspace')render();
       toast(t('srcChanged'),'warn',{label:t('srcKeepShort'),fn:()=>refreshSource(true)})}
   }catch(e){}
@@ -546,7 +557,7 @@ async function checkSource(){
 async function refreshSource(keep){
   const old=APP.ws,url=(old.source&&old.source.url)||APP.config.dataset;
   try{
-    const txt=await fetchText(url);const o=JSON.parse(txt);
+    const txt=(await fetchFirst([url].concat(dsUrls()))).txt;const o=JSON.parse(txt);
     const nw=M.fromDataset(o,old.name);nw.source={url,hash:M.fnv(txt),at:Date.now(),auto:!old.source||old.source.auto!==false};
     let w;
     if(keep)w=M.mergeDataset(old,nw);else{w=nw;w.id=old.id;w.name=old.name;w.snapshots=old.snapshots}
@@ -564,10 +575,10 @@ function applyPreset(k){
 }
 async function loadDataset(keepView){
   try{
-    const url=APP.config.dataset||'data/complete_data.json';
-    const txt=await fetchText(url);
+    const got=await fetchFirst(dsUrls());const url=got.url,txt=got.txt;
     const o=JSON.parse(txt);const w=M.fromDataset(o,o.name||t('datasetName'));
     w.source={url,hash:M.fnv(txt),at:Date.now(),auto:true};
+    APP.prefs.dsBooted=true;
     saveNow();switchTo(w);if(keepView!==true)APP.view='plan';render();toast(t('imported'));
   }catch(e){toast(t('invalid',{e:e.message}),'warn')}
 }
@@ -576,14 +587,22 @@ const act={
   jump(b){const el=document.getElementById(b.dataset.to);if(el){el.scrollIntoView({behavior:'smooth',block:'start'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1200)}},
   bookOn(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(r)r.on=!r.on})},
   bookAllOn(){const all=APP.ws.book.every(r=>r.on);commit(ws=>{ws.book.forEach(r=>r.on=!all)})},
-  bookFlip(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(!r)return;if(r.rel==='team')r.op=r.op==='min'?'max':'min';else r.sense=M.FLIP[r.sense]});toast(t('bFlipped'))},
+  bookFlip(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(!r)return;if(r.rel==='team'||r.rel==='count')r.op=({min:'max',max:'min',exact:'exact',ifany:'min'})[r.op]||'max';else r.sense=M.FLIP[r.sense]});toast(t('bFlipped'))},
+  bookNot(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(!r)return;let m=r[b.dataset.side];if(b.dataset.mi!=null&&m.more)m=m.more[+b.dataset.mi];if(m&&m.k!=='all')m.not=!m.not})},
+  bookMore(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(!r)return;const m=r[b.dataset.side];m.more=m.more||[];m.join=m.join||'and';m.more.push(b.dataset.side==='who'||r.rel==='with'?{k:'gender',v:'f',not:false}:{k:'kmLe',v:'30',not:false})})},
+  bookLess(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(!r)return;const m=r[b.dataset.side];m.more.splice(+b.dataset.i,1);if(!m.more.length){delete m.more;delete m.join}})},
+  bookJoin(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(r){const m=r[b.dataset.side];m.join=m.join==='or'?'and':'or'}})},
+  bookDayMode(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(r)r.what=b.dataset.v==='dates'?{k:'dates',v:''}:{k:'dow',v:[false,false,false,false,false,true,false]}})},
+  bookPer(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(r)r.per=r.per==='week'?'plan':'week'})},
+  bookRestore(b){armOr(b,'brs',restoreBook)},
+  bookFilter(b){APP.f.bookQ=b.dataset.v;render()},
   bookHard(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(!r)return;r.sense=({prefer:'only',avoid:'never',only:'prefer',never:'avoid'})[r.sense];Object.assign(r,M.normRule(r))})},
   bookDup(b){commit(ws=>{const i=ws.book.findIndex(r=>r.id===b.dataset.id);if(i<0)return;const c=M.normRule(Object.assign(clone(ws.book[i]),{id:''}));ws.book.splice(i+1,0,c)})},
   bookDel(b){armOr(b,'bd'+b.dataset.id,()=>commit(ws=>{ws.book=ws.book.filter(r=>r.id!==b.dataset.id)}))},
   bookDow(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(r&&r.rel==='day')r.what.v[+b.dataset.i]=!r.what.v[+b.dataset.i]})},
-  bookN(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(r)r.n=clamp(r.n+ +b.dataset.d,0,20)},{co:'bn'+b.dataset.id})},
+  bookN(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(r)r.n=clamp(r.n+ +b.dataset.d,0,r.rel==='count'?99:20)},{co:'bn'+b.dataset.id})},
   bookJson(){openJson('book')},
-  bookForPerson(b){APP.view='rules';render();addRule(null,{who:{k:'person',v:b.dataset.id},rel:'site',sense:'avoid'})},
+  bookForPerson(b){const k=b.dataset.kind||'site';const o={who:{k:'person',v:b.dataset.id},rel:k==='count'?'count':k,sense:k==='count'?'prefer':'avoid'};if(k==='count'){o.op='min';o.n=2;o.what={k:'all',v:''}}addRule(null,o,true);toast(t('ruleAdded'))},
   personGender(b){commit(ws=>{const p=byId(ws.people,b.dataset.id);if(p)p.gender=b.dataset.v})},
   personPat(b){commit(ws=>{const p=byId(ws.people,b.dataset.id);if(!p)return;if(p.runMax===''){p.runMax=Math.max(1,ws.rules.runMax||1);p.offMin=Math.max(1,ws.rules.offMin||1)}else{p.runMax='';p.offMin=''}})},
   personRun(b){commit(ws=>{const p=byId(ws.people,b.dataset.id);if(!p)return;const k=b.dataset.k;p[k]=clamp((+p[k]||0)+ +b.dataset.d,k==='runMax'?1:0,14)},{co:'pr'+b.dataset.id+b.dataset.k})},
@@ -592,6 +611,7 @@ const act={
   eqExport:openEq,
   eqFmt(b){eqState.fmt=b.dataset.v;refreshEq()},
   eqCopy(){copyText(V.eqText(eqState.fmt))},
+  eqCopyAs(b){APP.prefs.eq={fmt:b.dataset.v};copyText(V.eqText(b.dataset.v))},
   eqCopyQuick(){copyText(V.eqText(APP.prefs.eq&&APP.prefs.eq.fmt||'text'))},
   eqDownload(){const e=EQX[eqState.fmt];dl(slug(APP.ws.name)+'-objective.'+e[0],V.eqText(eqState.fmt),e[1])},
   srcRefresh(b){refreshSource(b.dataset.keep==='1')},
@@ -722,6 +742,7 @@ document.addEventListener('input',e=>{
     const lab=el.nextElementSibling;if(lab)lab.textContent=bd==='weight'||bd==='bookW'?el.value:(+el.value).toFixed(2);
     return;
   }
+  if(bd==='bookDates'){const id=el.dataset.id,v=el.value;commit(ws=>{const r=byId(ws.book,id);if(r&&r.what.k==='dates')r.what.v=v.slice(0,400)},{render:false,co:'bdt'+id});return}
   if(bd==='bookNote'){const id=el.dataset.id,v=el.value;commit(ws=>{const r=byId(ws.book,id);if(r)r.note=v.slice(0,160)},{render:false,solve:false,co:'bnote'+id});return}
   if((bd==='site'||bd==='person')&&(el.dataset.f==='name'||el.dataset.f==='zone')){
     const arr=bd==='site'?'sites':'people';const id=el.dataset.id,f=el.dataset.f,v=el.value;
@@ -754,7 +775,8 @@ document.addEventListener('change',e=>{
     case 'engine':commit(ws=>{ws.engine.seed=Math.max(1,M.intOr(v,1))});break;
     case 'weight':{const k=el.dataset.k;commit(ws=>{ws.weights[k]=clamp(M.intOr(v,50),0,100)},{render:false});break}
     case 'bookW':{const id=el.dataset.id;commit(ws=>{const r=byId(ws.book,id);if(r)r.w=clamp(M.intOr(v,50),0,100)},{render:false});break}
-    case 'bookNum':{const id=el.dataset.id,side=el.dataset.side;commit(ws=>{const r=byId(ws.book,id);if(r)r[side].v=String(Math.max(0,M.num(v,0)))});break}
+    case 'bookNum':{const id=el.dataset.id,side=el.dataset.side,mi=el.dataset.mi;commit(ws=>{const r=byId(ws.book,id);if(!r)return;const m=mi!=null&&r[side].more?r[side].more[+mi]:r[side];m.v=String(Math.max(0,M.num(v,0)))});break}
+    case 'bookDates':render();break;
     case 'routeKm':{const id=el.dataset.id;commit(ws=>{const r=byId(ws.routes,id);if(r)r.km=Math.max(0,M.num(v,0))});break}
     case 'bookNote':render();break;
     case 'unit':commit(ws=>{ws.unit=v==='mi'?'mi':'km'},{solve:false});break;
@@ -796,7 +818,7 @@ window.addEventListener('beforeunload',()=>{if(saveT)saveNow()});
 
 async function loadConfig(){
   if(location.protocol==='file:')return;
-  try{const r=await fetch('data/app-config.json',{cache:'no-cache'});if(r.ok){const c=await r.json();APP.config=Object.assign({},CFG_DEFAULT,c)}}catch(e){}
+  try{const r=await fetchFirst(['data/app-config.json','data/app-config.json.txt']);APP.config=Object.assign({},CFG_DEFAULT,JSON.parse(r.txt))}catch(e){}
 }
 async function boot(){
   await loadConfig();
@@ -818,7 +840,9 @@ async function boot(){
   Store.save(ws,APP.ix);
   render();
   if(migrated)toast(t('migrated'));
-  if(APP._firstRun&&location.protocol!=='file:'){APP._firstRun=false;loadDataset(true);return}
+  const hasDs=APP.ix.list.some(x=>x.template==='dataset');
+  if(location.protocol==='file:'){if(!ws.sites.length||APP._firstRun)toast(t('fileProto'),'warn',{label:t('impDataset'),fn:()=>pickFile('wsJson','.json,.txt,application/json')})}
+  else if(APP._firstRun||!ws.sites.length||(!hasDs&&!APP.prefs.dsBooted)){APP._firstRun=false;APP.prefs.dsBooted=true;loadDataset(true);return}
   if(!ws.plan&&APP.compiled().P.V)solve({quiet:true});
   checkSource();
 }
