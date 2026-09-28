@@ -83,6 +83,28 @@ fetch('../data/complete_data.json').then(r=>r.json()).then(o=>{
   log('dates honored (bend→open expected): '+(bad5===0)+' ('+bad5+')');
   cr.book=[];cr.week=cr.week.map(d=>d.on?Object.assign(d,{n:3}):d);const c6=run('3/day routes',cr);
   log('dayRoute: '+JSON.stringify(c6.r.stats.dayRoute.slice(0,2))+' route cost '+(c6.r.breakdown.route||0).toFixed(2));
+  /* ---- revisit timing / previous visits (also standalone: history-test.html) ---- */
+  if(window.HIST_ONLY===false)return;
+  const hw=M.fromDataset(o,'hist');month(hw,2026,10);hw.book=[];hw.goals=[];
+  const pl=M.plannable(hw);const recent=pl.slice(0,15),old=pl.slice(15,30);
+  const aoa=[['date','place','people']].concat(recent.map((s,i)=>['2026-09-'+String(10+i%15).padStart(2,'0'),s.name,hw.people[0].name])).concat(old.map((s,i)=>[String(1+i%27).padStart(2,'0')+'/06/2026',s.name,hw.people[1].name+'|'+hw.people[2].name]));
+  const pr=M.parseHistoryRows(hw,aoa);log('history parse: rows='+pr.rows+' recs='+pr.recs.length+' bad='+pr.bad+' noSite='+pr.noSite);
+  hw.history=M.mergeHistory([],pr.recs).list;
+  const dupe=M.mergeHistory(hw.history,pr.recs);log('history dedupe: added='+dupe.added+' dup='+dupe.dup);
+  const rid=new Set(recent.map(s=>s.id)),oid=new Set(old.map(s=>s.id));
+  const cntIn=(res,set)=>{let n=0;res.r.siteOf.forEach(si=>{if(si>=0&&set.has(res.C.map.sites[si]))n++});return n};
+  const h0=run('history off',hw);
+  hw.recency=M.normRecency({mode:'range',min:45,max:75,hard:true});
+  const h1=run('history range 45–75 must',hw);
+  log('recent (<45d) visits: off='+cntIn(h0,rid)+' on='+cntIn(h1,rid)+' · overdue (>75d) visits: off='+cntIn(h0,oid)+' on='+cntIn(h1,oid)+' rc='+JSON.stringify(h1.r.stats.rc));
+  log('recency honored: '+(cntIn(h1,rid)<=cntIn(h0,rid)&&cntIn(h1,oid)>=cntIn(h0,oid)));
+  hw.recency=M.normRecency({mode:'random',min:30,max:90,jitter:5,salt:3});
+  const w1=M.rcWindow(hw,pl[0],hw.recency),w2=M.rcWindow(hw,pl[0],hw.recency);hw.recency.salt=4;const w3=M.rcWindow(hw,pl[0],hw.recency);
+  log('random window stable: '+(w1.target===w2.target)+' target='+w1.target+' reroll='+w3.target);
+  run('history random 30–90',hw);
+  hw.recency=M.normRecency({mode:'min',min:60,personDays:90});run('history min 60 + person 90',hw);
+  log('date parse: '+['2026-08-14','14/08/2026','٢٠٢٦-٠٨-١٤',46248].map(M.parseAnyDate).join(','));
+  const rtH=M.fromDataset(JSON.parse(JSON.stringify(M.toDataset(hw))),'rtH');log('history roundtrip: '+rtH.history.length+'='+hw.history.length+' recency '+rtH.recency.mode);
   document.getElementById('out').textContent=out.join('\n');
 });
 document.getElementById('out').textContent=out.join('\n');

@@ -42,8 +42,8 @@ function refreshChrome(){
   $('#tabs').innerHTML=V.tabs();
   const st=$('#status');if(st)st.innerHTML=V.statusHTML();
 }
-const VIEWFN={plan:'planView',sites:'sitesView',people:'peopleView',rules:'rulesView',model:'modelView',insights:'insightsView',workspace:'workspaceView'};
-const VIEWS_ORDER=['plan','sites','people','rules','model','insights','workspace'];
+const VIEWFN={plan:'planView',sites:'sitesView',people:'peopleView',history:'historyView',rules:'rulesView',model:'modelView',insights:'insightsView',workspace:'workspaceView'};
+const VIEWS_ORDER=['plan','sites','people','history','rules','model','insights','workspace'];
 function render(){
   pendingRender=false;
   I.setTerms(APP.ws.terms);
@@ -217,7 +217,7 @@ function armOr(btn,key,fn){
 }
 
 function dl(name,text,mime){
-  const b=new Blob([text],{type:mime||'text/plain;charset=utf-8'});const u=URL.createObjectURL(b);
+  const b=text instanceof Blob?text:new Blob([text],{type:mime||'text/plain;charset=utf-8'});const u=URL.createObjectURL(b);
   const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);
   toast(t('downloaded'));
 }
@@ -297,8 +297,10 @@ function reportText(){
 function parseDays(x,def){const s=String(x||'').replace(/[^01]/g,'');if(s.length!==7)return def.slice();return s.split('').map(c=>c==='1')}
 function parseDates(x){return String(x||'').split(/[|;\s]+/).map(s=>s.trim()).filter(validISO)}
 function boolish(x,d){const s=String(x==null?'':x).trim().toLowerCase();if(!s)return d;return !['0','false','no','n','off','x'].includes(s)}
-function importCSV(kind,text){
-  const rows=M.csvParse(text);if(!rows.length){toast(t('invalid',{e:'empty'}),'warn');return}
+function importCSV(kind,text){return importRows(kind,M.csvParse(text))}
+function importRows(kind,rows){
+  rows=(rows||[]).map(r=>(r||[]).map(x=>x==null?'':String(x))).filter(r=>r.some(x=>x.trim()!==''));
+  if(!rows.length){toast(t('invalid',{e:'empty'}),'warn');return}
   const hdr=rows[0].map(h=>h.trim().toLowerCase());
   const hasH=hdr.includes('name')||hdr.includes('location');
   if(kind==='locations'){
@@ -306,8 +308,8 @@ function importCSV(kind,text){
     let n=0;commit(ws=>{(hasH?rows.slice(1):rows).forEach(r=>{const nm=(r[ni]||'').trim();if(!nm)return;const km=Math.max(0,M.num(r[ki<0?1:ki],0));const ex=ws.locations.find(l=>l.name===nm);if(ex){ex.km=km;ex.unknown=false}else ws.locations.push(M.mkLoc(nm,km));n++});M.syncLoc(ws)});
     toast(t('impDone',{n,k:0}));return;
   }
-  const keys=kind==='sites'?['name','category','location','km','crit','tag','zone','weight','min','max','days','blackout','active']:['name','roles','rank','home','pref','weight','days','off','max','max_week','active'];
-  const alias={distance:'km',mi:'km',miles:'km',cat:'category',type:'category',role:'roles',pool:'roles',origin_km:'home',origin:'home',off_dates:'off',weekdays:'days',max_total:'max',maxweek:'max_week',criticality:'crit',loc:'location',kind:'tag'};
+  const keys=kind==='sites'?['name','category','location','km','crit','tag','zone','weight','min','max','gap_min','gap_max','days','blackout','active']:['name','roles','rank','home','pref','weight','days','off','max','max_week','active'];
+  const alias={distance:'km',mi:'km',miles:'km',cat:'category',type:'category',role:'roles',pool:'roles',origin_km:'home',origin:'home',off_dates:'off',weekdays:'days',max_total:'max',maxweek:'max_week',criticality:'crit',loc:'location',kind:'tag',gapmin:'gap_min',gapmax:'gap_max','gap min':'gap_min','gap max':'gap_max',revisit_min:'gap_min',revisit_max:'gap_max'};
   const idx={};
   if(hasH)hdr.forEach((h,i)=>{const k=alias[h]||h;if(keys.includes(k)&&idx[k]===undefined)idx[k]=i});else keys.forEach((k,i)=>idx[k]=i);
   const body=hasH?rows.slice(1):rows;
@@ -319,9 +321,9 @@ function importCSV(kind,text){
       if(kind==='sites'){
         const cn=get(r,'category');let cat=cn?ws.categories.find(c=>c.name.toLowerCase()===cn.toLowerCase()):ws.categories[0];
         if(!cat){const st={};ws.roles.forEach((ro,i)=>st[ro.id]=i===0?1:0);cat=M.mkCat(cn||'Imported',M.COLORS[ws.categories.length%M.COLORS.length],st,1);ws.categories.push(cat)}
-        const mn=get(r,'min'),mx=get(r,'max');const ln=get(r,'location');let loc='';
+        const mn=get(r,'min'),mx=get(r,'max'),g1=get(r,'gap_min'),g2=get(r,'gap_max');const ln=get(r,'location');let loc='';
         if(ln){let l=ws.locations.find(x=>x.name===ln);if(!l){l=M.mkLoc(ln,M.num(get(r,'km'),0));ws.locations.push(l)}loc=l.id}
-        ws.sites.push(M.mkSite(name,cat.id,Math.max(0,M.num(get(r,'km'),0)),{loc,crit:clamp(M.num(get(r,'crit'),50),0,100),tag:get(r,'tag'),zone:get(r,'zone'),weight:clamp(M.num(get(r,'weight'),1),.1,3),minV:mn===''?'':Math.max(0,M.intOr(mn,0)),maxV:mx===''?'':Math.max(0,M.intOr(mx,0)),days:parseDays(get(r,'days'),[true,true,true,true,true,true,true]),blackout:parseDates(get(r,'blackout')),active:boolish(get(r,'active'),true)}));
+        ws.sites.push(M.mkSite(name,cat.id,Math.max(0,M.num(get(r,'km'),0)),{loc,crit:clamp(M.num(get(r,'crit'),50),0,100),tag:get(r,'tag'),zone:get(r,'zone'),weight:clamp(M.num(get(r,'weight'),1),.1,3),minV:mn===''?'':Math.max(0,M.intOr(mn,0)),maxV:mx===''?'':Math.max(0,M.intOr(mx,0)),gapMin:g1===''?'':Math.max(0,M.intOr(g1,0)),gapMax:g2===''?'':Math.max(0,M.intOr(g2,0)),days:parseDays(get(r,'days'),[true,true,true,true,true,true,true]),blackout:parseDates(get(r,'blackout')),active:boolish(get(r,'active'),true)}));
       }else{
         const rn=get(r,'roles').split(/[|;]+/).map(s=>s.trim()).filter(Boolean);
         const roles=rn.map(x=>{let ro=ws.roles.find(q=>q.name.toLowerCase()===x.toLowerCase());if(!ro){ro=M.mkRole(x,M.COLORS[ws.roles.length%M.COLORS.length]);ws.roles.push(ro)}return ro.id});
@@ -335,23 +337,93 @@ function importCSV(kind,text){
   });
   toast(t('impDone',{n,k}),n?'':'warn');
 }
-function csvTemplate(kind){
+/* ---- templates: rows (array of arrays) shared by CSV and Excel ---- */
+function tplRows(kind){
   const ws=APP.ws;
-  if(kind==='locations')return '\uFEFF'+[['name','km'],['Central','0'],['North town','18']].map(M.csvRow).join('\r\n');
-  if(kind==='sites'){const c=ws.categories[0]?ws.categories[0].name:'Main';return '\uFEFF'+[['name','category','location','km','crit','tag','zone','weight','min','max','days','blackout','active'],['Central Clinic',c,'Central','0','75','Clinic','','1','','','1111100','','1'],['Harbour Office',c,'','22','50','Office','East','1.5','1','4','0111110','2026-10-06|2026-10-07','1']].map(M.csvRow).join('\r\n')}
-  const r=ws.roles.map(x=>x.name);return '\uFEFF'+[['name','roles','rank','home','pref','weight','days','off','max','max_week','active'],['Alex',r[0]||'Lead','75','5','near','1','0111110','','','3','1'],['Sam',r.slice(0,2).join('|')||'Lead','50','12','none','1','1111100','2026-10-12','','','1']].map(M.csvRow).join('\r\n');
+  if(kind==='locations'){const L=(ws.locations||[]).slice(0,2);return [['name','km']].concat(L.length?L.map(l=>[l.name,String(l.km)]):[['Central','0'],['North town','18']])}
+  if(kind==='sites'){const c=ws.categories[0]?ws.categories[0].name:'Main';const l=(ws.locations||[])[0];return [['name','category','location','km','crit','tag','zone','weight','min','max','gap_min','gap_max','days','blackout','active'],['Central Clinic',c,l?l.name:'Central','0','75','Clinic','','1','','','45','75','1111100','','1'],['Harbour Office',c,'','22','50','Office','East','1.5','1','4','','','0111110','2026-10-06|2026-10-07','1']]}
+  if(kind==='history'){
+    const S=M.plannable(ws).slice(0,3),P=ws.people.filter(p=>p.active);
+    const d0=addISO(todayISO(),-60),d1=addISO(todayISO(),-35),d2=addISO(todayISO(),-12);
+    const pp=(i,n)=>P.slice(i,i+n).map(p=>p.name).join('|');
+    return [['date','place','people','note'],
+      [d0,S[0]?S[0].name:'Central Clinic',pp(0,2)||'Alex|Sam',''],
+      [d1,S[1]?S[1].name:'Harbour Office',pp(2,2)||'Sam',''],
+      [d2,S[2]?S[2].name:(S[0]?S[0].name:'Central Clinic'),pp(4,3)||'Alex','follow-up']];
+  }
+  const r=ws.roles.map(x=>x.name);return [['name','roles','rank','home','pref','weight','days','off','max','max_week','active'],['Alex',r[0]||'Lead','75','5','near','1','0111110','','','3','1'],['Sam',r.slice(0,2).join('|')||'Lead','50','12','none','1','1111100','2026-10-12','','','1']];
+}
+function tplLists(kind){
+  const ws=APP.ws;const cols=[];
+  if(kind==='history'){cols.push(['place / '+t('site')].concat(M.plannable(ws).map(s=>s.name)));cols.push(['people / '+t('people')].concat(ws.people.map(p=>p.name)))}
+  else if(kind==='sites'){cols.push(['category'].concat(ws.categories.map(c=>c.name)));cols.push(['location'].concat((ws.locations||[]).map(l=>l.name)))}
+  else if(kind==='people'){cols.push(['roles'].concat(ws.roles.map(r=>r.name)));cols.push(['pref','none','near','far'])}
+  else return null;
+  const n=Math.max(...cols.map(c=>c.length));const out=[];for(let i=0;i<n;i++)out.push(cols.map(c=>c[i]==null?'':c[i]));return out;
+}
+function csvTemplate(kind){return '\uFEFF'+tplRows(kind).map(M.csvRow).join('\r\n')}
+/* ---- Excel support (bundled SheetJS, loaded on demand) ---- */
+let xlsxP=null;
+function needXLSX(){
+  if(G.XLSX)return Promise.resolve(G.XLSX);
+  if(xlsxP)return xlsxP;
+  toast(t('xlsxLoading'));
+  xlsxP=new Promise((res,rej)=>{const s=document.createElement('script');s.src='js/vendor/xlsx.full.min.js';s.onload=()=>G.XLSX?res(G.XLSX):rej(new Error('XLSX'));s.onerror=()=>{xlsxP=null;rej(new Error('XLSX'))};document.head.appendChild(s)});
+  return xlsxP;
+}
+async function dlXlsx(name,sheets){
+  try{const X=await needXLSX();const wb=X.utils.book_new();
+    sheets.forEach(([nm,rows,widths])=>{const sh=X.utils.aoa_to_sheet(rows);sh['!cols']=(widths||rows[0].map(()=>18)).map(w=>({wch:w}));X.utils.book_append_sheet(wb,sh,nm)});
+    const out=X.write(wb,{bookType:'xlsx',type:'array'});
+    dl(name,new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  }catch(e){console.error(e);toast(t('xlsxFail'),'warn')}
+}
+function tplDownload(kind,fmt){
+  const ws=APP.ws;
+  if(kind==='book'){const list=M.bookForExport(ws);dl(slug(ws.name)+'.rulebook-template.json',JSON.stringify(list.length?list:[{on:true,rel:'site',sense:'avoid',who:{k:'gender',v:'f'},what:{k:'kmGe',v:'70'},w:50,note:'example'}],null,2),'application/json');return}
+  if(kind==='dataset'){dl(slug(ws.name)+'.dataset-template.json',JSON.stringify(M.toDataset(ws),null,2),'application/json');return}
+  if(fmt==='xlsx'){const rows=tplRows(kind);const sheets=[[kind,rows,rows[0].map(h=>h==='people'||h==='place'||h==='name'?28:14)]];const L=tplLists(kind);if(L)sheets.push(['lists',L,L[0].map(()=>30)]);dlXlsx(kind+'-template.xlsx',sheets);return}
+  dl(kind+'-template.csv',csvTemplate(kind),'text/csv;charset=utf-8');
+}
+function histRows(){
+  const ws=APP.ws;
+  return [['date','place','people','note','source']].concat((ws.history||[]).map(h=>{const s=h.site&&byId(ws.sites,h.site);return [h.date,s?s.name:(h.sn||''),h.people.map(id=>(byId(ws.people,id)||{}).name).filter(Boolean).concat(h.pn||[]).join('|'),h.note||'',h.src]}));
+}
+function importHistory(aoa){
+  const ws=APP.ws;const res=M.parseHistoryRows(ws,aoa);
+  if(!res.rows){toast(t('invalid',{e:'empty'}),'warn');return}
+  let mg=null;
+  commit(w=>{mg=M.mergeHistory(w.history||[],res.recs);w.history=mg.list;w.histRev=(w.histRev||0)+1});
+  toast(t('histRead',{r:res.rows,n:mg.added,d:mg.dup,b:res.bad,u:res.noSite,q:res.noPerson}),res.bad||res.noSite?'warn':'');
+  if(APP.view!=='history'){APP.view='history';render()}
+}
+function addHistoryRecs(recs){
+  let mg=null;commit(w=>{mg=M.mergeHistory(w.history||[],recs);w.history=mg.list;w.histRev=(w.histRev||0)+1});
+  toast(t('histAdded',{n:mg.added,d:mg.dup}));
 }
 function csvExport(kind){
   const ws=APP.ws;const b=d=>d.map(x=>x?'1':'0').join('');
   const ln=id=>{const l=byId(ws.locations,id);return l?l.name:''};
-  if(kind==='sites'){const cn=id=>{const c=byId(ws.categories,id);return c?c.name:''};return '\uFEFF'+[['name','category','location','km','crit','tag','zone','weight','min','max','days','blackout','active']].concat(ws.sites.map(s=>[s.name,cn(s.cat),ln(s.loc),s.km,s.crit,s.tag,s.zone,s.weight,s.minV,s.maxV,b(s.days),s.blackout.join('|'),s.active?1:0])).map(M.csvRow).join('\r\n')}
+  if(kind==='sites'){const cn=id=>{const c=byId(ws.categories,id);return c?c.name:''};return '\uFEFF'+[['name','category','location','km','crit','tag','zone','weight','min','max','gap_min','gap_max','days','blackout','active']].concat(ws.sites.map(s=>[s.name,cn(s.cat),ln(s.loc),s.km,s.crit,s.tag,s.zone,s.weight,s.minV,s.maxV,s.gapMin==null?'':s.gapMin,s.gapMax==null?'':s.gapMax,b(s.days),s.blackout.join('|'),s.active?1:0])).map(M.csvRow).join('\r\n')}
   const rn=id=>{const r=byId(ws.roles,id);return r?r.name:''};
   return '\uFEFF'+[['name','roles','rank','home','pref','weight','days','off','max','max_week','active']].concat(ws.people.map(p=>[p.name,p.roles.map(rn).join('|'),p.rank,p.home,p.pref,p.weight,b(p.days),p.off.join('|'),p.maxLoad,p.maxWeek,p.active?1:0])).map(M.csvRow).join('\r\n');
 }
 let fileMode=null;
 function pickFile(mode,accept){fileMode=mode;const f=$('#fileIn');f.value='';f.accept=accept;f.click()}
+const SHEET_ACCEPT='.csv,.tsv,.txt,.xlsx,.xls,.ods,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel';
+function tplUpload(kind){
+  if(kind==='book'||kind==='dataset'){pickFile('wsJson','.json,.txt,application/json');return}
+  pickFile(kind==='history'?'hist':kind,SHEET_ACCEPT+(kind==='history'?',.json,application/json':''));
+}
+function onRows(mode,rows){if(mode==='hist')importHistory(rows);else importRows(mode,rows)}
 $('#fileIn').addEventListener('change',e=>{
   const file=e.target.files[0];if(!file)return;
+  const mode=fileMode;
+  if(/\.(xlsx|xls|ods)$/i.test(file.name)&&['hist','sites','people','locations'].includes(mode)){
+    const rb=new FileReader();
+    rb.onload=async()=>{try{const X=await needXLSX();const wb=X.read(new Uint8Array(rb.result),{type:'array'});const sh=wb.Sheets[wb.SheetNames[0]];onRows(mode,X.utils.sheet_to_json(sh,{header:1,raw:true,defval:''}))}catch(err){console.error(err);toast(t('invalid',{e:err.message}),'warn')}};
+    rb.readAsArrayBuffer(file);return;
+  }
   const rd=new FileReader();
   rd.onload=()=>{
     const txt=String(rd.result||'');
@@ -363,7 +435,11 @@ $('#fileIn').addEventListener('change',e=>{
         if(APP.ix.list.some(x=>x.id===w.id))w.id=uid('w');
         w.updated=Date.now();saveNow();switchTo(w);toast(t('imported'));
       }catch(err){toast(t('invalid',{e:err.message}),'warn')}
-    }else if(fileMode==='sites'||fileMode==='people')importCSV(fileMode,txt);
+    }else if(fileMode==='hist'){
+      const s=txt.replace(/^\uFEFF/,'').trim();
+      if(s[0]==='['||s[0]==='{'){try{const o=JSON.parse(s);importHistory(M.historyAoa(Array.isArray(o)?o:(o.history||[])))}catch(err){toast(t('invalid',{e:err.message}),'warn')}}
+      else importHistory(M.csvParse(txt));
+    }else if(fileMode==='sites'||fileMode==='people'||fileMode==='locations')importCSV(fileMode,txt);
   };
   rd.readAsText(file);
 });
@@ -420,6 +496,11 @@ function paletteItems(q){
     {label:t('pr_once'),kind:t('presets'),icon:'ic-target',run:()=>applyPreset('once')},
     {label:t('pr_twice'),kind:t('presets'),icon:'ic-target',run:()=>applyPreset('twice')},
     {label:t('kbdT'),kind:t('palCmd'),icon:'ic-keyboard',run:()=>openModal(V.kbdModal())},
+    {label:t('histUpload'),kind:t('tabHist'),icon:'ic-up',run:()=>tplUpload('history')},
+    {label:t('histTplCsv'),kind:t('tabHist'),icon:'ic-file',run:()=>tplDownload('history','csv')},
+    {label:t('histTplXlsx'),kind:t('tabHist'),icon:'ic-sheet',run:()=>tplDownload('history','xlsx')},
+    {label:t('histAddPlan'),kind:t('tabHist'),icon:'ic-hist',run:()=>act.histFromPlan()},
+    ...V.RC_PRESETS.map(([k,o])=>({label:t('rcp_'+k),kind:t('kTiming'),icon:'ic-hist',run:()=>applyRcPreset(k)})),
     {label:t('bAdd'),kind:t('bookT'),icon:'ic-flip',run:()=>addRule('__blank')},
     {label:t('bRestore'),kind:t('bookT'),icon:'ic-undo',run:restoreBook},
     {label:t('bJson'),kind:t('bookT'),icon:'ic-code',run:()=>openJson('book')},
@@ -429,7 +510,7 @@ function paletteItems(q){
     {label:t('srcExportB'),kind:t('kSource'),icon:'ic-down',run:()=>act.dsExport()}
   ];
   (APP.config.ruleTemplates||[]).forEach((x,i)=>cmds.push({label:t('bAdd')+': '+((x.label&&(x.label[I.lang()]||x.label.en))||'#'+(i+1)),kind:t('bookT'),icon:'ic-flip',run:()=>addRule(String(i))}));
-  [['plan','tabPlan','ic-cal'],['sites','tabSites','ic-build'],['people','tabPeople','ic-users'],['rules','tabRules','ic-sliders'],['model','tabModel','ic-sigma'],['insights','tabInsights','ic-chart'],['workspace','tabWs','ic-layers']].forEach(([v,l,i])=>cmds.push({label:t('goTo')+' '+t(l),kind:t('palCmd'),icon:i,run:()=>{APP.view=v;render()}}));
+  [['plan','tabPlan','ic-cal'],['sites','tabSites','ic-build'],['people','tabPeople','ic-users'],['history','tabHist','ic-hist'],['rules','tabRules','ic-sliders'],['model','tabModel','ic-sigma'],['insights','tabInsights','ic-chart'],['workspace','tabWs','ic-layers']].forEach(([v,l,i])=>cmds.push({label:t('goTo')+' '+t(l),kind:t('palCmd'),icon:i,run:()=>{APP.view=v;render()}}));
   M.TEMPLATE_ORDER.forEach(k=>cmds.push({label:t('newWs')+': '+t('tpl_'+k),kind:t('palCmd'),icon:'ic-layers',run:()=>newWorkspace(k)}));
   APP.ix.list.filter(x=>x.id!==ws.id).forEach(x=>cmds.push({label:t('open_')+': '+x.name,kind:t('tabWs'),icon:'ic-layers',run:()=>{const w=Store.load(x.id);if(w)switchTo(w)}}));
   let out=cmds.filter(c=>!q||c.label.toLowerCase().includes(q));
@@ -502,6 +583,8 @@ function applyBind(bd,ds,v){
       else r[f]=v;
       Object.assign(r,M.normRule(r))});break;
     case 'bookAdd':addRule(v);break;
+    case 'rcPreset':applyRcPreset(v);break;
+    case 'hAddSite':{const d=$('#hAddDate'),p=$('#hAddPeople');if(d)APP.f.hAddDate=d.value;if(p)APP.f.hAddPeople=p.value;APP.f.hAddSite=v;render();break}
     case 'route':commit(ws=>{const r=byId(ws.routes,ds.id);if(r){r[ds.f]=v;if(r.a===r.b)ws.routes=ws.routes.filter(x=>x!==r)}});break;
   }
 }
@@ -550,6 +633,7 @@ async function fetchDataset(first){
   const got=await fetchFirst([first].concat(dsUrls()));const o=JSON.parse(got.txt);let sig=got.txt;
   const side=[['facilities',APP.config.facilities||'data/facilities.json'],['people',APP.config.people||'data/people_ranking.json']];
   for(const [k,u] of side){if(APP.config[k]===false)continue;try{const r=await fetchFirst([u,u+'.txt']);const arr=JSON.parse(r.txt);if(Array.isArray(arr)&&arr.length){o[k]=M.overlayList(k,o[k],arr);sig+=r.txt}}catch(e){}}
+  if(APP.config.history){try{const r=await fetchFirst([APP.config.history]);const u=APP.config.history;let arr;if(/\.csv$/i.test(u))arr=M.csvParse(r.txt);else{const x=JSON.parse(r.txt);arr=Array.isArray(x)?x:(x.history||[])}if(arr.length){o.history=Array.isArray(arr[0])?arr:arr;sig+=r.txt}}catch(e){}}
   return {url:got.url,o,hash:M.fnv(sig)};
 }
 async function checkSource(){
@@ -570,6 +654,10 @@ async function refreshSource(keep){
     toast(t(keep?'srcMerged':'srcReplaced'));
   }catch(e){toast(t('invalid',{e:e.message}),'warn')}
 }
+function applyRcPreset(k){
+  const x=V.RC_PRESETS.find(p=>p[0]===k);if(!x)return;
+  commit(ws=>{ws.recency=M.normRecency(Object.assign({},ws.recency||{},x[1]))});toast(t('presetDone'));
+}
 function applyPreset(k){
   commit(ws=>{
     if(k==='clear'){ws.goals=[];ws.sizing.mode='rhythm';return}
@@ -588,6 +676,31 @@ async function loadDataset(keepView){
 }
 const act={
   palette:openPalette,undo,redo,
+  /* ---- revisit timing & history ---- */
+  rcMode(b){commit(ws=>{ws.recency=M.normRecency(Object.assign({},ws.recency,{mode:b.dataset.v}))})},
+  rcToggle(b){commit(ws=>{const r=M.normRecency(ws.recency);r[b.dataset.k]=!r[b.dataset.k];ws.recency=r})},
+  rcFresh(b){commit(ws=>{ws.recency=M.normRecency(Object.assign({},ws.recency,{fresh:b.dataset.v}))})},
+  rcReroll(){commit(ws=>{const r=M.normRecency(ws.recency);r.salt=(r.salt||1)+1;ws.recency=r})},
+  dueWithPlan(){APP.f.dueWithPlan=!APP.f.dueWithPlan;APP.f.duePage=0;render()},
+  dueSt(b){APP.f.dueSt=b.dataset.v;APP.f.duePage=0;render()},
+  duePage(b){APP.f.duePage=+b.dataset.p;render()},
+  histF(b){APP.f.histF=b.dataset.v;APP.f.histPage=0;render()},
+  histPage(b){APP.f.histPage=+b.dataset.p;render()},
+  histDel(b){commit(ws=>{ws.history=(ws.history||[]).filter(h=>h.id!==b.dataset.id);ws.histRev=(ws.histRev||0)+1})},
+  histClear(b){armOr(b,'hc',()=>{commit(ws=>{ws.history=[];ws.histRev=(ws.histRev||0)+1});toast(t('histCleared'))})},
+  histRelink(){let n=0;commit(ws=>{n=M.relinkHistory(ws);ws.histRev=(ws.histRev||0)+1});toast(t('histRelinked',{n}))},
+  histFromPlan(){if(!APP.ws.plan){toast(t('histNoPlan'),'warn');return}addHistoryRecs(M.histFromPlan(APP.ws))},
+  snapHist(b){const s=APP.ws.snapshots.find(x=>x.id===b.dataset.id);if(!s)return;addHistoryRecs(M.histFromPlan({plan:s.plan}))},
+  histAddOne(){
+    const ws=APP.ws,d=($('#hAddDate')||{}).value,sid=APP.f.hAddSite,ptxt=($('#hAddPeople')||{}).value||'';
+    if(!validISO(d)||!sid||!byId(ws.sites,sid)){toast(t('invalid',{e:t('histDate')+' / '+t('histPlace')}),'warn');return}
+    const ids=[],pn=[];ptxt.split(/[|;،,]+/).map(x=>x.trim()).filter(Boolean).forEach(x=>{const p=ws.people.find(q=>M.hnorm(q.name)===M.hnorm(x));if(p){if(!ids.includes(p.id))ids.push(p.id)}else pn.push(x)});
+    APP.f.hAddDate=d;APP.f.hAddPeople='';
+    addHistoryRecs([{id:uid('h'),date:d,site:sid,sn:'',people:ids,pn,note:'',src:'manual'}]);
+  },
+  histExport(b){const rows=histRows();const nm=slug(APP.ws.name)+'-visit-history';if(b.dataset.fmt==='xlsx')dlXlsx(nm+'.xlsx',[['history',rows,[12,34,40,24,10]]]);else dl(nm+'.csv','\uFEFF'+rows.map(M.csvRow).join('\r\n'),'text/csv;charset=utf-8')},
+  tplDl(b){tplDownload(b.dataset.kind,b.dataset.fmt)},
+  tplUp(b){tplUpload(b.dataset.kind)},
   jump(b){const el=document.getElementById(b.dataset.to);if(el){el.scrollIntoView({behavior:'smooth',block:'start'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1200)}},
   bookOn(b){commit(ws=>{const r=byId(ws.book,b.dataset.id);if(r)r.on=!r.on})},
   bookAllOn(){const all=APP.ws.book.every(r=>r.on);commit(ws=>{ws.book.forEach(r=>r.on=!all)})},
@@ -715,7 +828,7 @@ const act={
   wsExport(){dl(slug(APP.ws.name)+'.mauvine.json',JSON.stringify(APP.ws,null,1),'application/json')},
   wsImport(){pickFile('wsJson','.json,application/json')},
   wsReset(b){armOr(b,'wr',()=>{const tp=M.TEMPLATES[APP.ws.template]?APP.ws.template:'blank';const w=M.TEMPLATES[tp]();w.id=APP.ws.id;w.name=APP.ws.name;pushHist();APP.ws=w;compiledCache=null;saveNow();render();solve({quiet:true})})},
-  csvImport(b){pickFile(b.dataset.kind,'.csv,.tsv,.txt,text/csv')},
+  csvImport(b){pickFile(b.dataset.kind,SHEET_ACCEPT)},
   csvTpl(b){dl(b.dataset.kind+'-template.csv',csvTemplate(b.dataset.kind),'text/csv;charset=utf-8')},
   csvExport(b){dl(slug(APP.ws.name)+'-'+b.dataset.kind+'.csv',csvExport(b.dataset.kind),'text/csv;charset=utf-8')},
   modalClose:closeModal,
@@ -736,8 +849,8 @@ document.addEventListener('click',e=>{
 });
 document.addEventListener('input',e=>{
   const el=e.target,bd=el.dataset&&el.dataset.bind;if(!bd)return;
-  if(bd==='siteQ'||bd==='peopleQ'){
-    APP.f[bd]=el.value;if(bd==='siteQ')APP.f.sitePage=0;
+  if(bd==='siteQ'||bd==='peopleQ'||bd==='histQ'){
+    APP.f[bd]=el.value;if(bd==='siteQ')APP.f.sitePage=0;if(bd==='histQ')APP.f.histPage=0;
     const pos=el.selectionStart;render();const n=$('[data-bind="'+bd+'"]');if(n){n.focus();try{n.setSelectionRange(pos,pos)}catch(x){}}
     return;
   }
@@ -770,11 +883,13 @@ document.addEventListener('change',e=>{
       let val=v;
       if(f==='km'||f==='home')val=Math.max(0,M.num(v,0));
       else if(f==='weight')val=clamp(M.num(v,1),.1,3);
-      else if(f==='minV'||f==='maxV'||f==='maxLoad'||f==='maxWeek')val=v===''?'':Math.max(0,M.intOr(v,0));
+      else if(f==='minV'||f==='maxV'||f==='maxLoad'||f==='maxWeek'||f==='gapMin'||f==='gapMax')val=v===''?'':Math.max(0,M.intOr(v,0));
       commit(ws=>{const x=byId(ws[arr],id);if(x)x[f]=val},{render:f==='cat'||f==='pref'});
       break;}
     case 'loc':{const id=el.dataset.id,f=el.dataset.f;if(f==='km')commit(ws=>{const l=byId(ws.locations,id);if(l){l.km=Math.max(0,M.num(v,0));l.unknown=false;M.syncLoc(ws)}});else render();break}
     case 'sizeTotal':commit(ws=>{ws.sizing.total=clamp(M.intOr(v,0),0,9999)});break;
+    case 'rc':{const k=el.dataset.k;commit(ws=>{const r=M.normRecency(ws.recency);r[k]=Math.max(0,M.intOr(v,0));ws.recency=M.normRecency(r)});break}
+    case 'rcCat':{const c=el.dataset.c,k=el.dataset.k;commit(ws=>{const r=M.normRecency(ws.recency);const x=Object.assign({min:'',max:''},r.cat[c]||{});x[k]=v===''?'':Math.max(0,M.intOr(v,0));r.cat[c]=x;ws.recency=M.normRecency(r)});break}
     case 'rule':{const k=el.dataset.k;commit(ws=>{ws.rules[k]=Math.max(0,M.num(v,10))});break}
     case 'engine':commit(ws=>{ws.engine.seed=Math.max(1,M.intOr(v,1))});break;
     case 'weight':{const k=el.dataset.k;commit(ws=>{ws.weights[k]=clamp(M.intOr(v,50),0,100)},{render:false});break}
@@ -807,7 +922,7 @@ document.addEventListener('keydown',e=>{
   if(mod&&k.toLowerCase()==='y'&&!typing){e.preventDefault();redo();return}
   if(typing||mod||e.altKey||modal)return;
   const views=VIEWS_ORDER;
-  if(/^[1-7]$/.test(k)){APP.view=views[+k-1];closePop();render();return}
+  if(/^[1-8]$/.test(k)){APP.view=views[+k-1];closePop();render();return}
   const lk=k.toLowerCase();
   if(lk==='g'){solve({});return}
   if(lk==='r'){reroll();return}

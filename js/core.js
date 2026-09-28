@@ -28,8 +28,19 @@ function weekStartOf(iso,ws){const d=dowOf(iso);return addISO(iso,-((d-ws+7)%7))
 
 const COLORS=['#5A4E7C','#6F8AA3','#4D7178','#B0765A','#6E8A63','#A0596A','#8A7A4C','#4F7C72','#7B6592','#98806C'];
 const LEVELS=[0,25,50,75,100];
-const WEIGHT_KEYS=['goals','book','rank','fair','rotate','mix','pref','home','route','focus','cluster','spacing','pairs','likes'];
-const defaultWeights=()=>({fair:70,pref:45,home:35,route:40,rotate:60,mix:60,focus:55,cluster:45,spacing:35,pairs:50,likes:40,rank:60,goals:80,book:50});
+const WEIGHT_KEYS=['goals','book','recency','rank','fair','rotate','mix','pref','home','route','focus','cluster','spacing','pairs','likes'];
+const defaultWeights=()=>({fair:70,pref:45,home:35,route:40,rotate:60,mix:60,focus:55,cluster:45,spacing:35,pairs:50,likes:40,rank:60,goals:80,book:50,recency:60});
+/* Revisit timing (previous visits / earlier plans). mode: off | min | range | random */
+const RC_MODES=['off','min','range','random'];
+const defaultRecency=()=>({mode:'off',min:45,max:75,jitter:7,salt:1,hard:false,inPlan:true,inWindow:false,overdue:true,fresh:'neutral',lookback:365,personDays:0,cat:{}});
+function normRecency(o){
+  o=o&&typeof o==='object'?o:{};const d=defaultRecency();
+  const r={mode:RC_MODES.includes(o.mode)?o.mode:d.mode,min:clamp(intOr(o.min,d.min),0,1000),max:clamp(intOr(o.max,d.max),0,1000),jitter:clamp(intOr(o.jitter,d.jitter),0,365),salt:Math.max(1,intOr(o.salt,1)),
+    hard:!!o.hard,inPlan:o.inPlan!==false,inWindow:!!o.inWindow,overdue:o.overdue!==false,fresh:o.fresh==='due'?'due':'neutral',lookback:clamp(intOr(o.lookback,d.lookback),0,3650),personDays:clamp(intOr(o.personDays,0),0,730),cat:{}};
+  if(r.max&&r.max<r.min){const x=r.max;r.max=r.min;r.min=x}
+  if(o.cat&&typeof o.cat==='object')for(const k in o.cat){const c=o.cat[k]||{};const mn=c.min===''||c.min==null?'':clamp(intOr(c.min,0),0,1000),mx=c.max===''||c.max==null?'':clamp(intOr(c.max,0),0,1000);if(mn!==''||mx!=='')r.cat[k]={min:mn,max:mx}}
+  return r;
+}
 const defaultUseW=()=>{const o={};WEIGHT_KEYS.forEach(k=>o[k]=true);return o};
 const defaultRules=()=>({perDay:1,runMax:1,offMin:1,distinct:true,siteGap:0,mode:'bend',nearKm:10,weekStart:0,rankGate:'off',rankTol:25});
 const defaultEngine=()=>({seed:20260907,quality:'balanced',runs:3,live:true});
@@ -47,6 +58,7 @@ function blankWS(name){
     template:'blank',
     terms:clone(TERM_DEFAULT),unit:'km',
     roles:[],categories:[],sites:[],people:[],locations:[],routes:[],goals:[],book:[],sizing:defaultSizing(),source:null,
+    history:[],histRev:0,recency:defaultRecency(),
     week:WEEK5(1,1),overrides:{},
     scope:{mode:'month',start:fISO(new Date(new Date().getFullYear(),new Date().getMonth(),1)),end:''},
     rules:defaultRules(),weights:defaultWeights(),useW:defaultUseW(),engine:defaultEngine(),
@@ -55,7 +67,7 @@ function blankWS(name){
 function mkRole(name,color){return {id:uid('r'),name,color}}
 function mkCat(name,color,staff,share,planned){return {id:uid('c'),name,color,staff:staff||{},share:share==null?1:share,planned:planned!==false}}
 function mkLoc(name,km,o){return Object.assign({id:uid('l'),name,km:km||0},o||{})}
-function mkSite(name,cat,km,o){return Object.assign({id:uid('s'),name,cat,km:km||0,loc:'',crit:50,tag:'',zone:'',weight:1,minV:'',maxV:'',days:[true,true,true,true,true,true,true],blackout:[],active:true,note:''},o||{})}
+function mkSite(name,cat,km,o){return Object.assign({id:uid('s'),name,cat,km:km||0,loc:'',crit:50,tag:'',zone:'',weight:1,minV:'',maxV:'',gapMin:'',gapMax:'',days:[true,true,true,true,true,true,true],blackout:[],active:true,note:''},o||{})}
 function mkPerson(name,roles,o){return Object.assign({id:uid('p'),name,roles:roles||[],home:0,homeLoc:'',rank:50,rankBy:{},gender:'',pref:'none',weight:1,days:[true,true,true,true,true,true,true],off:[],maxLoad:'',maxWeek:'',runMax:'',offMin:'',avoid:[],pair:[],likes:[],bans:[],active:true},o||{})}
 function mkGoal(o){return Object.assign({id:uid('g'),on:true,per:'each',scope:'all',ref:'',op:'min',n:1},o||{})}
 
@@ -245,7 +257,8 @@ function fromDataset(o,name){
   const facs=o.facilities||[];
   w.sites=facs.map((f,i)=>{const k=kindOf(f);const cr=f.crit!=null?f.crit:crits[f.name]!=null?crits[f.name]:(k==='excluded'?0:50);
     const low=(o.admin_low_frequency_facilities||[]).includes(f.name);
-    return mkSite(String(f.name),kindCat[k]||cBasic.id,0,{id:f.id||('f_'+i),loc:locId(f.location),tag:f.category||'',crit:clamp(num(cr,50),0,100),weight:clamp(num(f.weight,low?.5:1),.1,3),active:f.active!==false,minV:f.min==null?'':f.min,maxV:f.max==null?'':f.max})});
+    const gmn=f.gapMin!=null?f.gapMin:f.gap_min,gmx=f.gapMax!=null?f.gapMax:f.gap_max;
+    return mkSite(String(f.name),kindCat[k]||cBasic.id,0,{id:f.id||('f_'+i),loc:locId(f.location),tag:f.category||'',crit:clamp(num(cr,50),0,100),weight:clamp(num(f.weight,low?.5:1),.1,3),active:f.active!==false,minV:f.min==null?'':f.min,maxV:f.max==null?'':f.max,gapMin:gmn==null||gmn===''?'':Math.max(0,intOr(gmn,0)),gapMax:gmx==null||gmx===''?'':Math.max(0,intOr(gmx,0))})});
   const wd=Array.isArray(ds.weekdays)?ds.weekdays:[0,1,2,3,4];
   const per=Math.max(1,intOr(ds.maxVisitsPerDay,1));
   w.week=[0,1,2,3,4,5,6].map(i=>({on:wd.includes(i),n:wd.includes(i)?per:0,focus:'auto'}));
@@ -280,6 +293,8 @@ function fromDataset(o,name){
   if(Array.isArray(se.goals))w.goals=resolveGoals(w,se.goals);
   const book=o.rulebook||se.rulebook;
   if(Array.isArray(book))w.book=resolveBook(w,book);
+  if(se.recency){const rc=clone(se.recency);const cm={};if(rc.cat)for(const k in rc.cat){const c=w.categories.find(x=>x.id==='c_'+k||x.id===k||x.name===k);if(c)cm[c.id]=rc.cat[k]}rc.cat=cm;w.recency=normRecency(rc)}
+  if(Array.isArray(o.history)&&o.history.length){const res=parseHistoryRows(w,historyAoa(o.history));w.history=mergeHistory([],res.recs).list;w.histRev=1}
   const gr=ds.genderRule&&typeof ds.genderRule==='object'?ds.genderRule:{};
   Object.keys(gr).forEach(kind=>{
     const v=String(gr[kind]==null?'':gr[kind]).trim();if(!/^\d\d$/.test(v))return;
@@ -318,12 +333,13 @@ function mergeDataset(old,nw){
   out.categories=nw.categories.map(c=>{const o=byId(old.categories,c.id);return o?clone(o):c}).concat(oldExtraCats.map(clone));
   out.locations=nw.locations;
   const uniq=a=>Array.from(new Set(a));
-  out.sites=nw.sites.map(s=>{const o=byId(old.sites,s.id);if(!o)return s;return Object.assign({},s,{days:o.days,blackout:o.blackout,zone:o.zone,note:o.note,weight:o.weight,active:s.active&&o.active,minV:o.minV!==''?o.minV:s.minV,maxV:o.maxV!==''?o.maxV:s.maxV})});
+  out.sites=nw.sites.map(s=>{const o=byId(old.sites,s.id);if(!o)return s;return Object.assign({},s,{days:o.days,blackout:o.blackout,zone:o.zone,note:o.note,weight:o.weight,active:s.active&&o.active,minV:o.minV!==''?o.minV:s.minV,maxV:o.maxV!==''?o.maxV:s.maxV,gapMin:o.gapMin!==''&&o.gapMin!=null?o.gapMin:s.gapMin,gapMax:o.gapMax!==''&&o.gapMax!=null?o.gapMax:s.gapMax})});
   out.people=nw.people.map(p=>{const o=byId(old.people,p.id);if(!o)return p;return Object.assign({},p,{days:o.days,off:uniq(o.off.concat(p.off)),avoid:o.avoid,pair:o.pair,likes:uniq(o.likes.concat(p.likes)),bans:uniq(o.bans.concat(p.bans)),
     maxLoad:o.maxLoad!==''?o.maxLoad:p.maxLoad,maxWeek:o.maxWeek!==''?o.maxWeek:p.maxWeek,runMax:o.runMax!==''?o.runMax:p.runMax,offMin:o.offMin!==''?o.offMin:p.offMin,pref:o.pref!=='none'?o.pref:p.pref,active:p.active&&o.active})});
   out.routes=(nw.routes||[]).length?nw.routes:(old.routes||[]);
   out.book=(old.book||[]).length?old.book:(nw.book||[]);
   out.goals=old.goals.length?old.goals:nw.goals;
+  if(!(old.history||[]).length&&(nw.history||[]).length){out.history=nw.history;out.histRev=(old.histRev||0)+1}
   out.source=nw.source||old.source;
   out.updated=Date.now();
   syncLoc(out);
@@ -346,9 +362,11 @@ function toDataset(ws){
       pc.forEach(c=>{if(p.rankBy[c.id]!=null){const k=kindOf(c.id);o['rank'+k.charAt(0).toUpperCase()+k.slice(1)]=p.rankBy[c.id]}});
       if(p.runMax!==''||p.offMin!=='')o.pattern={work:p.runMax===''?null:p.runMax,rest:p.offMin===''?null:p.offMin};
       if(p.maxLoad!=='')o.maxTotal=p.maxLoad;if(p.maxWeek!=='')o.maxWeek=p.maxWeek;if(p.note)o.title=p.note;return o}),
-    facilities:ws.sites.map(s=>{const o={id:s.id,name:s.name,category:s.tag||'',location:ln(s.loc),kind:kindOf(s.cat),weight:s.weight,crit:s.crit};if(!s.active)o.active=false;if(s.minV!=='')o.min=s.minV;if(s.maxV!=='')o.max=s.maxV;return o}),
+    facilities:ws.sites.map(s=>{const o={id:s.id,name:s.name,category:s.tag||'',location:ln(s.loc),kind:kindOf(s.cat),weight:s.weight,crit:s.crit};if(!s.active)o.active=false;if(s.minV!=='')o.min=s.minV;if(s.maxV!=='')o.max=s.maxV;if(s.gapMin!==''&&s.gapMin!=null)o.gapMin=s.gapMin;if(s.gapMax!==''&&s.gapMax!=null)o.gapMax=s.gapMax;return o}),
     routes:(ws.routes||[]).map(r=>({from:ln(r.a),to:ln(r.b),km:r.km})),
+    history:(ws.history||[]).map(h=>{const s=byId(ws.sites,h.site);const o={date:h.date,place:s?s.name:(h.sn||''),people:h.people.map(id=>(byId(ws.people,id)||{}).name).filter(Boolean).concat(h.pn||[])};if(h.note)o.note=h.note;if(h.src&&h.src!=='upload')o.src=h.src;return o}),
     settings:{rules:ws.rules,weights:ws.weights,useW:ws.useW,engine:{seed:ws.engine.seed,quality:ws.engine.quality,runs:ws.engine.runs},sizing:ws.sizing,unit:ws.unit,week:ws.week,
+      recency:(()=>{const r=clone(ws.recency||defaultRecency());const cm={};for(const k in r.cat||{})cm[kindOf(k)]=r.cat[k];r.cat=cm;return r})(),
       goals:ws.goals.map(g=>({on:g.on,per:g.per,scope:g.scope,ref:g.scope==='cat'?kindOf(g.ref):g.scope==='loc'?ln(g.ref):g.scope==='site'?((byId(ws.sites,g.ref)||{}).name||g.ref):g.ref,op:g.op,n:g.n}))},
     rulebook:bookForExport(ws)
   };
@@ -395,6 +413,7 @@ function normalize(o){
   w.source=o.source&&typeof o.source==='object'?{url:String(o.source.url||''),hash:String(o.source.hash||''),at:+o.source.at||0,auto:o.source.auto!==false}:null;
   w.sites=o.sites.map((s,i)=>({id:okId(s.id,'s'),name:String(s.name||'Site '+(i+1)),cat:cIds.has(s.cat)?s.cat:(w.categories[0]&&w.categories[0].id),
     km:Math.max(0,num(s.km,0)),loc:lIds.has(s.loc)?s.loc:'',crit:lvl(s.crit,50),tag:String(s.tag||''),zone:String(s.zone||''),weight:clamp(num(s.weight,1),.1,3),minV:s.minV===''||s.minV==null?'':Math.max(0,intOr(s.minV,0)),maxV:s.maxV===''||s.maxV==null?'':Math.max(0,intOr(s.maxV,0)),
+    gapMin:s.gapMin===''||s.gapMin==null?'':clamp(intOr(s.gapMin,0),0,1000),gapMax:s.gapMax===''||s.gapMax==null?'':clamp(intOr(s.gapMax,0),0,1000),
     days:arr7(s.days,true),blackout:Array.isArray(s.blackout)?s.blackout.filter(validISO):[],active:s.active!==false,note:String(s.note||'')}));
   const sIds=new Set(w.sites.map(s=>s.id));
   w.people=o.people.map((p,i)=>{const rb={};if(p.rankBy&&typeof p.rankBy==='object')for(const k in p.rankBy)if(cIds.has(k))rb[k]=lvl(p.rankBy[k],50);
@@ -407,6 +426,10 @@ function normalize(o){
   const pIds=new Set(w.people.map(p=>p.id));
   w.people.forEach(p=>{p.avoid=p.avoid.filter(x=>pIds.has(x)&&x!==p.id);p.pair=p.pair.filter(x=>pIds.has(x)&&x!==p.id)});
   w.book=(Array.isArray(o.book)?o.book:[]).map(normRule);
+  w.history=(Array.isArray(o.history)?o.history:[]).filter(h=>h&&validISO(h.date)).slice(0,20000).map(h=>({id:typeof h.id==='string'&&h.id?h.id:uid('h'),date:h.date,site:sIds.has(h.site)?h.site:'',sn:String(h.sn||''),
+    people:(Array.isArray(h.people)?h.people:[]).filter(x=>pIds.has(x)),pn:(Array.isArray(h.pn)?h.pn:[]).map(String).filter(Boolean),note:String(h.note||'').slice(0,200),src:['upload','plan','manual'].includes(h.src)?h.src:'upload'}));
+  w.histRev=Math.max(0,intOr(o.histRev,0));
+  w.recency=normRecency(o.recency);
   w.goals=(Array.isArray(o.goals)?o.goals:[]).map(g=>({id:okId(g.id,'g'),on:g.on!==false,per:g.per==='total'?'total':'each',scope:['all','cat','loc','tag','site','crit'].includes(g.scope)?g.scope:'all',ref:String(g.ref||''),op:['min','exact','max'].includes(g.op)?g.op:'min',n:clamp(intOr(g.n,1),0,9999)}));
   const sz=o.sizing||{};w.sizing={mode:['rhythm','total','goals'].includes(sz.mode)?sz.mode:'rhythm',total:clamp(intOr(sz.total,40),0,9999)};
   w.week=normWeek(o.week);
@@ -527,9 +550,10 @@ function planDays(ws,keepZero){
 }
 function fpOf(ws){
   return fnv(JSON.stringify([ws.roles.map(r=>r.id),ws.categories.map(c=>[c.id,c.staff,c.share,c.planned]),
-    ws.sites.map(s=>[s.id,s.cat,s.km,s.loc,s.crit,s.tag,s.zone,s.weight,s.minV,s.maxV,s.days,s.blackout,s.active]),
+    ws.sites.map(s=>[s.id,s.cat,s.km,s.loc,s.crit,s.tag,s.zone,s.weight,s.minV,s.maxV,s.days,s.blackout,s.active,s.gapMin,s.gapMax]),
     ws.people.map(p=>[p.id,p.roles,p.home,p.homeLoc,p.rank,p.rankBy,p.gender,p.pref,p.weight,p.days,p.off,p.maxLoad,p.maxWeek,p.runMax,p.offMin,p.avoid,p.pair,p.likes,p.bans,p.active]),
-    ws.book||[],ws.routes||[],ws.goals,ws.sizing,ws.week,ws.overrides,ws.scope,ws.rules,ws.weights,ws.useW,ws.engine.seed,ws.engine.quality,ws.engine.runs]));
+    ws.book||[],ws.routes||[],ws.goals,ws.sizing,ws.week,ws.overrides,ws.scope,ws.rules,ws.weights,ws.useW,ws.engine.seed,ws.engine.quality,ws.engine.runs,
+    ws.recency||null,ws.histRev||0,(ws.history||[]).length]));
 }
 function fpWithLocks(ws){return fnv(fpOf(ws)+JSON.stringify(ws.locks))}
 
@@ -618,12 +642,34 @@ function compile(ws){
   });
   const span=D?dayNumA[D-1]-dayNumA[0]+1:0;
   const pIdeal=pTarget.map(t=>t>=1.5?Math.min(7,span/t)*.8:0);
+  /* ---- revisit timing: previous visits / earlier plans ---- */
+  const rc=normRecency(ws.recency);const rcOn=rc.mode!=='off'&&S>0&&D>0;
+  let rcMin=null,rcMax=null,rcFix=null,pLast=null,rcMul=null,rcTarget=null;
+  const stN=D?dayNum(start):0,enN=D?dayNum(end):0;
+  if(rcOn){
+    const lb=rc.lookback>0?stN-rc.lookback:-1e9;
+    rcMin=[];rcMax=[];rcTarget=[];sites.forEach(s=>{const w=rcWindow(ws,s,rc);rcMin.push(w?w.lo:0);rcMax.push(w?w.hi:0);rcTarget.push(w&&w.target!=null?w.target:-1)});
+    rcFix=sites.map(()=>[]);
+    const hist=ws.history||[];
+    hist.forEach(h=>{const si=sIx[h.site];if(si===undefined)return;const dn=dayNum(h.date);if(dn<lb||dn>enN)return;if(dn>=stN&&!rc.inWindow)return;if(rcFix[si].indexOf(dn)<0)rcFix[si].push(dn)});
+    rcFix.forEach(a=>a.sort((x,y)=>x-y));
+    if(rc.personDays>0){pLast=new Array(N*S).fill(-1e9);hist.forEach(h=>{const si=sIx[h.site];if(si===undefined)return;const dn=dayNum(h.date);if(dn>=stN||dn<lb)return;h.people.forEach(pid=>{const pi=pIx[pid];if(pi===undefined)return;const j=pi*S+si;if(dn>pLast[j])pLast[j]=dn})})}
+    rcMul=sites.map((s,si)=>{const f=rcFix[si].filter(x=>x<stN);const last=f.length?f[f.length-1]:null;
+      if(last==null)return rc.fresh==='due'?1.3:1;
+      if(rc.hard&&last+rcMin[si]>enN)return .05;
+      if(last+rcMin[si]>enN)return .35;
+      if(rcMax[si]>0&&last+rcMax[si]<=enN)return 1.6;
+      return 1});
+    if(!hist.length)warn.push({k:'rcnohist'});
+    else{const blocked=rcMul.filter(x=>x<=.05).length;if(blocked)warn.push({k:'rcblocked',n:blocked})}
+  }
   const sExp=new Array(S).fill(0);
+  const sw=si=>sites[si].weight*(rcMul?rcMul[si]:1);
   cats.forEach((c,ci)=>{
     const ms=[];sites.forEach((s,si)=>{if(sCat[si]===ci)ms.push(si)});if(!ms.length)return;
     const b=sum(ms.map(si=>gMin[si]));const left=Math.max(0,catTarget[ci]-b);
-    const free=ms.filter(si=>gMax[si]<0||gMax[si]>gMin[si]);const tw=sum(free.map(si=>sites[si].weight))||1;
-    ms.forEach(si=>{let e=gMin[si]+(free.includes(si)?left*sites[si].weight/tw:0);if(gMax[si]>=0)e=Math.min(e,gMax[si]);sExp[si]=e});
+    const free=ms.filter(si=>gMax[si]<0||gMax[si]>gMin[si]);const tw=sum(free.map(sw))||1;
+    ms.forEach(si=>{let e=gMin[si]+(free.includes(si)?left*sw(si)/tw:0);if(gMax[si]>=0)e=Math.min(e,gMax[si]);sExp[si]=e});
   });
   const sMin=sites.map(s=>s.minV===''?0:+s.minV);
   const sMax=sites.map(s=>s.maxV===''?-1:+s.maxV);
@@ -679,6 +725,7 @@ function compile(ws){
     dayNum:dayNumA,dayWeek,dayFocus,roleMembers,w,pRun,pOff,sDist:Array.from(sDist),pSiteD:Array.from(pSiteD),
     bkS:bk.bkS,bkSH:bk.bkSH,bkSR:bk.bkSR,bkD:bk.bkD,bkDH:bk.bkDH,bkDR:bk.bkDR,bkP:bk.bkP,bkPH:bk.bkPH,bkPR:bk.bkPR,team:bk.team,cnt:bk.cnt,cntBy:bk.cntBy,dayWk,nWk,bookOn:bk.on,
     rules:{perDay:ws.rules.perDay,runMax:ws.rules.runMax,offMin:ws.rules.offMin,strict:ws.rules.mode==='strict',distinct:ws.rules.distinct,siteGap:ws.rules.siteGap,nearKm:ws.rules.nearKm,rankGate:gate,rankTol:ws.rules.rankTol},
+    rcOn:rcOn?1:0,rcMin,rcMax,rcFix,rcTarget,pLast,rcHard:rc.hard?1:0,rcInPlan:rc.inPlan?1:0,rcOver:rc.overdue?1:0,rcFresh:rc.fresh==='due'?1:0,rcPD:rc.personDays,rcStart:stN,rcEnd:enN,
     Dn,seed:ws.engine.seed,iters,runs:ws.engine.runs};
   const map={start,end,days:days.map(d=>({iso:d.iso,n:d.n,focus:d.cfg.focus})),visits,seats:seats.map(s=>({key:s.key,v:s.v,r:s.r,i:s.i})),
     roles:roles.map(r=>r.id),cats:cats.map(c=>c.id),sites:sites.map(s=>s.id),people:people.map(p=>p.id),pTarget,catTarget,demand,sExp,grpGoal,gMin,gMax,book:bk.ids};
@@ -771,6 +818,110 @@ function csvParse(text){
   if(f!==''||row.length){row.push(f);rows.push(row)}
   return rows.filter(r=>r.some(x=>x.trim()!==''));
 }
+/* ======== Visit history (previous visits / earlier plans) ======== */
+function rcWindow(ws,s,rc){
+  rc=rc||normRecency(ws.recency);if(rc.mode==='off')return null;
+  const c=(rc.cat||{})[s.cat]||{};
+  const pick=(a,b,d)=>a!==''&&a!=null?+a:(b!==''&&b!=null?+b:d);
+  let lo=pick(s.gapMin,c.min,rc.min),hi=pick(s.gapMax,c.max,rc.mode==='min'?0:rc.max);
+  if(hi&&hi<lo)hi=lo;
+  let target=null;const baseLo=lo,baseHi=hi;
+  if(rc.mode==='random'){
+    const b=hi||lo+Math.max(14,rc.jitter*2);
+    const r=mulberry32((parseInt(fnv(String(s.id)+'#'+rc.salt),36)>>>0)||1)();
+    target=Math.round(lo+r*(b-lo));lo=Math.max(0,target-rc.jitter);hi=Math.max(1,target+rc.jitter);
+  }
+  return {lo,hi,target,baseLo,baseHi};
+}
+const AR_DIG=s=>String(s).replace(/[\u0660-\u0669]/g,c=>String(c.charCodeAt(0)-0x0660)).replace(/[\u06F0-\u06F9]/g,c=>String(c.charCodeAt(0)-0x06F0));
+function parseAnyDate(x){
+  if(x==null||x==='')return '';
+  if(x instanceof Date&&!isNaN(x))return fISO(x);
+  if(typeof x==='number'&&isFinite(x)){if(x>20000&&x<80000){const d=new Date(Math.round((x-25569)*864e5));return fISO(new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate()))}return ''}
+  let s=AR_DIG(x).trim();if(!s)return '';
+  let m=s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/);
+  if(m){const iso=m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');return validISO(iso)?iso:''}
+  m=s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/);
+  if(m){let d=+m[1],mo=+m[2],y=+m[3];if(y<100)y+=2000;if(mo>12&&d<=12){const q=d;d=mo;mo=q}const iso=y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');return validISO(iso)?iso:''}
+  if(/^\d{5}(\.\d+)?$/.test(s))return parseAnyDate(+s);
+  const d=new Date(s);return isNaN(d)?'':fISO(d);
+}
+const H_DATE=['date','day','visit_date','visit date','visited','on','التاريخ','تاريخ','اليوم','تاريخ الزيارة'];
+const H_SITE=['place','site','facility','name','store','client','location_name','المكان','المنشأة','المنشاة','الموقع','الجهة','المرفق','اسم المنشأة'];
+const H_PEOPLE=['people','team','members','staff','persons','visitors','who','الفريق','الأعضاء','القائمون بالزيارة','الأفراد','المفتشون'];
+const H_NOTE=['note','notes','comment','remarks','ملاحظات','ملاحظة'];
+const hnorm=h=>String(h==null?'':h).replace(/^\uFEFF/,'').trim().toLowerCase().replace(/\s+/g,' ');
+function historyAoa(list){
+  if(!Array.isArray(list))return [];
+  if(list.length&&Array.isArray(list[0]))return list;
+  const rows=[['date','place','people','note']];
+  list.forEach(o=>{if(!o||typeof o!=='object')return;const pl=o.people||o.team||o.members||[];rows.push([o.date||o.day||'',o.place||o.site||o.facility||o.name||'',Array.isArray(pl)?pl.join('|'):String(pl||''),o.note||''])});
+  return rows;
+}
+function parseHistoryRows(ws,aoa){
+  const out={recs:[],bad:0,noSite:0,noPerson:0,rows:0};
+  if(!Array.isArray(aoa)||!aoa.length)return out;
+  const hdr=aoa[0].map(hnorm);
+  const terms=[].concat(Object.values((ws.terms&&ws.terms.en)||{}),Object.values((ws.terms&&ws.terms.ar)||{})).map(hnorm);
+  const roleNames=(ws.roles||[]).map(r=>hnorm(r.name));
+  const find=list=>hdr.findIndex(h=>list.includes(h));
+  let di=find(H_DATE),si=find(H_SITE);
+  if(si<0)si=hdr.findIndex(h=>terms.includes(h)&&!['visit','visits','زيارة','زيارات'].includes(h)&&!roleNames.includes(h));
+  const ni=find(H_NOTE);
+  const pc=[];hdr.forEach((h,i)=>{if(i===di||i===si||i===ni)return;if(H_PEOPLE.includes(h)||roleNames.includes(h)||/^(person|member|inspector|visitor|staff)\s*\d*$/.test(h)||/^(عضو|فرد|مفتش)\s*\d*$/.test(h))pc.push(i)});
+  let body=aoa.slice(1);
+  if(di<0&&si<0){di=0;si=1;pc.push(2);body=aoa}
+  if(di<0)di=0;if(si<0)si=di===0?1:0;
+  const sByName={};(ws.sites||[]).forEach(s=>{sByName[hnorm(s.name)]=s.id});
+  const pByName={};(ws.people||[]).forEach(p=>{pByName[hnorm(p.name)]=p.id});
+  body.forEach(r=>{
+    if(!r||!r.some(x=>String(x==null?'':x).trim()!==''))return;out.rows++;
+    const date=parseAnyDate(r[di]);const nm=String(r[si]==null?'':r[si]).trim();
+    if(!date||!nm){out.bad++;return}
+    const sid=sByName[hnorm(nm)]||'';if(!sid)out.noSite++;
+    const ids=[],pn=[];
+    pc.forEach(i=>String(r[i]==null?'':r[i]).split(/[|;،,·\/\n]+/).map(x=>x.replace(/^\(.*\)$/,'').trim()).filter(Boolean).forEach(x=>{const id=pByName[hnorm(x)];if(id){if(!ids.includes(id))ids.push(id)}else if(!pn.includes(x)){pn.push(x);out.noPerson++}}));
+    out.recs.push({id:uid('h'),date,site:sid,sn:sid?'':nm,people:ids,pn,note:ni>=0?String(r[ni]==null?'':r[ni]).slice(0,200):'',src:'upload'});
+  });
+  return out;
+}
+function histKey(h){return h.date+'|'+(h.site||('#'+hnorm(h.sn)))}
+function mergeHistory(old,recs){
+  const list=(old||[]).map(h=>Object.assign({},h,{people:h.people.slice(),pn:(h.pn||[]).slice()}));
+  const ix={};list.forEach((h,i)=>ix[histKey(h)]=i);let added=0,dup=0;
+  recs.forEach(r=>{const k=histKey(r);if(ix[k]!=null){dup++;const h=list[ix[k]];r.people.forEach(p=>{if(!h.people.includes(p))h.people.push(p)});(r.pn||[]).forEach(p=>{if(!h.pn.includes(p))h.pn.push(p)});if(r.note&&!h.note)h.note=r.note;return}
+    ix[k]=list.length;list.push(r);added++});
+  list.sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0);
+  return {list,added,dup};
+}
+function relinkHistory(ws){
+  const sBy={};ws.sites.forEach(s=>sBy[hnorm(s.name)]=s.id);const pBy={};ws.people.forEach(p=>pBy[hnorm(p.name)]=p.id);let n=0;
+  (ws.history||[]).forEach(h=>{if(!h.site&&h.sn){const id=sBy[hnorm(h.sn)];if(id){h.site=id;h.sn='';n++}}
+    if(h.pn&&h.pn.length){h.pn=h.pn.filter(x=>{const id=pBy[hnorm(x)];if(id){if(!h.people.includes(id))h.people.push(id);n++;return false}return true})}});
+  return n;
+}
+function histFromPlan(ws){
+  const pl=ws.plan;if(!pl||!pl.map||!pl.res)return [];
+  const m=pl.map,r=pl.res,out=[];
+  m.visits.forEach((v,vi)=>{const si=r.siteOf[vi];if(si<0)return;const sid=m.sites[si];const ppl=[];
+    for(let z=v.z0;z<v.z0+v.zn;z++){if(!r.stats.active[z])continue;const p=r.seatP[z];if(p>=0&&!ppl.includes(m.people[p]))ppl.push(m.people[p])}
+    out.push({id:uid('h'),date:m.days[v.d].iso,site:sid,sn:'',people:ppl,pn:[],note:'',src:'plan'})});
+  return out;
+}
+/* per-site due board as of a date. Uses history (+ current plan when withPlan). */
+function recencyBoard(ws,asOf,withPlan){
+  const rc=normRecency(ws.recency);const aN=dayNum(asOf);
+  const last={},cnt={};
+  (ws.history||[]).forEach(h=>{if(!h.site||h.date>asOf)return;cnt[h.site]=(cnt[h.site]||0)+1;if(!last[h.site]||h.date>last[h.site])last[h.site]=h.date});
+  if(withPlan){const hp=histFromPlan(ws);hp.forEach(h=>{if(h.date>asOf)return;if(!last[h.site]||h.date>last[h.site])last[h.site]=h.date})}
+  return plannable(ws).map(s=>{
+    const w=rcWindow(ws,s,rc);const l=last[s.id]||'';const ago=l?aN-dayNum(l):null;
+    let st='never';
+    if(l){if(!w)st='ok';else if(ago<w.lo)st='early';else if(w.hi&&ago>w.hi)st='late';else st='due'}
+    return {s,last:l,ago,n:cnt[s.id]||0,w,st,from:l&&w?addISO(l,w.lo):'',by:l&&w&&w.hi?addISO(l,w.hi):''};
+  });
+}
+
 const csvCell=v=>{const s=String(v==null?'':v);return /[",\n\r;]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
 const csvRow=a=>a.map(csvCell).join(',');
 
@@ -779,5 +930,6 @@ G.MV={$,$$,esc,uid,clamp,sum,avg,num,intOr,byId,clone,fnv,gini,mulberry32,
   COLORS,LEVELS,WEIGHT_KEYS,defaultWeights,defaultUseW,defaultRules,defaultEngine,TERM_DEFAULT,
   TEMPLATES,TEMPLATE_ORDER,blankWS,mkRole,mkCat,mkLoc,mkSite,mkPerson,mkGoal,normalize,migrateLegacy,fromDataset,syncLoc,
   Store,rangeOf,dayCfg,planDays,planTotal,plannable,goalSites,goalNeed,fpOf,fpWithLocks,compile,csvParse,csvRow,
-  SENSES,WHO_K,WHAT_K,RELS,TEAM_OPS,COUNT_OPS,FLIP,isHard,normRule,mkRule,whoMatch,whatMatch,resolveBook,resolveGoals,parseDates,overlayList,bookForExport,toDataset,mergeDataset,locDist,arr7};
+  SENSES,WHO_K,WHAT_K,RELS,TEAM_OPS,COUNT_OPS,FLIP,isHard,normRule,mkRule,whoMatch,whatMatch,resolveBook,resolveGoals,parseDates,overlayList,bookForExport,toDataset,mergeDataset,locDist,arr7,
+  RC_MODES,defaultRecency,normRecency,rcWindow,parseAnyDate,parseHistoryRows,historyAoa,mergeHistory,relinkHistory,histFromPlan,recencyBoard,hnorm};
 })(window);

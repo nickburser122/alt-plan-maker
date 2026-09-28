@@ -106,6 +106,11 @@ function issueText(x,D){
     case 'rulewith':case 'rulewithsoft':return t('i_rulewith',{p:pn(x.p),q:pn(x.q),s:vs(x.v),d:vd(x.v),r:bn(x.b)});
     case 'ruleteam':return t('i_ruleteam',{s:sn(x.s),d:vd(x.v),n:x.n,max:x.max,r:bn(x.b)});
     case 'rulecount':return t(x.w?'i_rulecountW':'i_rulecount',{p:pn(x.p),n:x.n,max:x.max,w:x.w,r:bn(x.b)});
+    case 'rcearly':return t('i_rcearly',{s:sn(x.s),n:x.n,min:x.min});
+    case 'rclate':return t('i_rclate',{s:sn(x.s),n:x.n,max:x.max});
+    case 'rcover':return t('i_rcover',{s:sn(x.s),n:x.n,max:x.max});
+    case 'rcnever':return t('i_rcnever',{s:sn(x.s)});
+    case 'rcperson':return t('i_rcperson',{p:pn(x.p),s:sn(x.s),n:x.n,min:x.min});
   }
   return x.k;
   function bn(i){const id=m.book&&m.book[i];const r=id&&byId(ws.book||[],id);return r?ruleText(r):'—'}
@@ -129,6 +134,8 @@ function warnText(w){
     case 'rankgap':return t('w_rankgap',{n:w.n,ex:w.ex});
     case 'rulenone':return t('w_rulenone',{r:ruleText(byId(A().ws.book||[],w.b))});
     case 'ruleteam':return t('w_ruleteam',{r:ruleText(byId(A().ws.book||[],w.b)),n:w.n,have:w.have});
+    case 'rcnohist':return t('w_rcnohist');
+    case 'rcblocked':return t('w_rcblocked',{n:w.n});
   }
   return w.k;
 }
@@ -154,7 +161,7 @@ function tabs(){
   return T.map(([k,i,l],n)=>'<button class="tab'+(v===k?' on':'')+'" role="tab" aria-selected="'+(v===k)+'" data-act="tab" data-view="'+k+'" title="'+esc(t(l))+' ('+(n+1)+')">'+ic(i)+'<span class="tablab">'+esc(t(l))+'</span>'+(k==='plan'&&nIss?'<span class="badge">'+nIss+'</span>':'')+'</button>').join('');
 }
 
-const TABS=[['plan','ic-cal','tabPlan'],['sites','ic-build','tabSites'],['people','ic-users','tabPeople'],['rules','ic-sliders','tabRules'],['model','ic-sigma','tabModel'],['insights','ic-chart','tabInsights'],['workspace','ic-layers','tabWs']];
+const TABS=[['plan','ic-cal','tabPlan'],['sites','ic-build','tabSites'],['people','ic-users','tabPeople'],['history','ic-hist','tabHist'],['rules','ic-sliders','tabRules'],['model','ic-sigma','tabModel'],['insights','ic-chart','tabInsights'],['workspace','ic-layers','tabWs']];
 function ringSvg(f){const c=2*Math.PI*9;return '<svg class="ring" viewBox="0 0 22 22"><circle class="bg" cx="11" cy="11" r="9"/><circle class="fg" cx="11" cy="11" r="9" stroke-dasharray="'+c+'" stroke-dashoffset="'+(c*(1-f))+'"/></svg>'}
 function statusHTML(){
   const a=A(),ws=a.ws;
@@ -447,7 +454,7 @@ function sitesView(){
   const per=40,pages=Math.max(1,Math.ceil(list.length/per));a.f.sitePage=clamp(a.f.sitePage||0,0,pages-1);
   const page=list.slice(a.f.sitePage*per,(a.f.sitePage+1)*per);
   let h='<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kList'))+'</div><h2 class="ctitle">'+esc(t('tabSites'))+' <span class="muted mono tiny">'+ws.sites.length+'</span></h2></div>'
-    +'<div class="row"><button class="btn primary sm" data-act="addSite">'+ic('ic-plus')+esc(t('addSite'))+'</button><button class="btn sm" data-act="csvImport" data-kind="sites">'+ic('ic-up')+esc(t('importCsv'))+'</button><button class="btn sm ghost" data-act="csvTpl" data-kind="sites">'+esc(t('template'))+'</button><button class="btn sm ghost" data-act="csvExport" data-kind="sites">'+ic('ic-down')+esc(t('exportCsv'))+'</button></div></div>';
+    +'<div class="row"><button class="btn primary sm" data-act="addSite">'+ic('ic-plus')+esc(t('addSite'))+'</button><button class="btn sm" data-act="csvImport" data-kind="sites">'+ic('ic-up')+esc(t('importCsv'))+'</button>'+tplMenu('sites')+'<button class="btn sm ghost" data-act="csvExport" data-kind="sites">'+ic('ic-down')+esc(t('exportCsv'))+'</button></div></div>';
   h+='<div class="toolbar"><label class="search">'+ic('ic-search')+'<input class="inp slim" type="search" placeholder="'+esc(t('search'))+'" data-bind="siteQ" value="'+esc(a.f.siteQ||'')+'"></label>'
     +'<button class="fchip'+(fc==='all'?' on':'')+'" data-act="siteCat" data-v="all">'+esc(t('all'))+' <small>'+ws.sites.length+'</small></button>'
     +ws.categories.map(c=>'<button class="fchip'+(fc===c.id?' on':'')+'" data-act="siteCat" data-v="'+esc(c.id)+'"><span class="dot" style="--c:'+esc(c.color)+'"></span>'+esc(c.name)+' <small>'+(counts[c.id]||0)+'</small></button>').join('')
@@ -455,8 +462,9 @@ function sitesView(){
   if(!ws.sites.length){h+='<div class="empty-state">'+ic('ic-build','bigic')+'<p>'+esc(t('noSites'))+'</p></div></section>';return h}
   const catOpts=ws.categories.map(c=>[c.id,c.name+(c.planned?'':' ('+t('unplanned')+')'),c.color]);
   const lo=locOpts();
-  h+='<div class="tblwrap"><table class="ledger"><thead><tr><th>'+esc(t('active'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('category'))+'</th><th>'+esc(t('location'))+'</th><th>'+esc(t('dist'))+'</th><th>'+esc(t('crit'))+'</th><th>'+esc(t('tag'))+'</th><th>'+esc(t('weight'))+'</th><th>'+esc(t('minMax'))+'</th><th>'+esc(t('days'))+'</th><th>'+esc(t('blackout'))+'</th><th>'+esc(t('used'))+'</th><th></th></tr></thead><tbody>';
-  if(!page.length)h+='<tr><td colspan="13" class="empty">'+esc(t('noMatch'))+'</td></tr>';
+  h+='<div class="tblwrap"><table class="ledger"><thead><tr><th>'+esc(t('active'))+'</th><th>'+esc(t('name'))+'</th><th>'+esc(t('category'))+'</th><th>'+esc(t('location'))+'</th><th>'+esc(t('dist'))+'</th><th>'+esc(t('crit'))+'</th><th>'+esc(t('tag'))+'</th><th>'+esc(t('weight'))+'</th><th>'+esc(t('minMax'))+'</th><th title="'+esc(t('rcCatN'))+'">'+esc(t('cGap'))+'</th><th>'+esc(t('days'))+'</th><th>'+esc(t('blackout'))+'</th><th>'+esc(t('used'))+'</th><th></th></tr></thead><tbody>';
+  const rcg=M.normRecency(ws.recency);
+  if(!page.length)h+='<tr><td colspan="14" class="empty">'+esc(t('noMatch'))+'</td></tr>';
   page.forEach(s=>{
     const cat=catOf(s.cat);const u=D&&!stale?(D.uses[s.id]||0):null;
     const sa='data-id="'+esc(s.id)+'"';
@@ -469,13 +477,14 @@ function sitesView(){
       +'<td><input class="inp slim" style="width:104px" data-bind="site" '+sa+' data-f="tag" value="'+esc(s.tag||'')+'" placeholder="—"></td>'
       +'<td><span class="numwrap"><input type="range" class="rng sm" min="0.1" max="3" step="0.05" value="'+s.weight+'" style="--fill:'+fill(s.weight,.1,3)+'" data-bind="site" data-id="'+esc(s.id)+'" data-f="weight"><span class="mono tiny">'+(+s.weight).toFixed(2)+'</span></span></td>'
       +'<td><span class="numwrap"><input class="inp num s" type="number" min="0" placeholder="—" data-bind="site" data-id="'+esc(s.id)+'" data-f="minV" value="'+s.minV+'"><input class="inp num s" type="number" min="0" placeholder="—" data-bind="site" data-id="'+esc(s.id)+'" data-f="maxV" value="'+s.maxV+'"></span></td>'
+      +'<td>'+(()=>{const w=M.rcWindow(ws,Object.assign({},s,{gapMin:'',gapMax:''}),Object.assign({},rcg,{mode:rcg.mode==='off'||rcg.mode==='random'?'range':rcg.mode}));return '<span class="numwrap"><input class="inp num s" type="number" min="0" placeholder="'+(w?w.lo:'—')+'" data-bind="site" data-id="'+esc(s.id)+'" data-f="gapMin" value="'+(s.gapMin==null?'':s.gapMin)+'"><input class="inp num s" type="number" min="0" placeholder="'+(w&&w.hi?w.hi:'—')+'" data-bind="site" data-id="'+esc(s.id)+'" data-f="gapMax" value="'+(s.gapMax==null?'':s.gapMax)+'"></span>'})()+'</td>'
       +'<td>'+wdChips(s.days,'siteDay','data-id="'+esc(s.id)+'"')+'</td>'
       +'<td><div class="row" style="gap:5px;flex-wrap:nowrap">'+dateChips(s.blackout,'siteBlackoutDel',s.id)+dpkTrigger('siteBlackout:'+s.id,null,null,true)+'</div></td>'
       +'<td>'+(u==null?'<span class="muted">—</span>':'<span class="mono">'+u+'×</span>')+'</td>'
       +'<td><button class="ibtn" data-act="delSite" data-id="'+esc(s.id)+'" title="'+esc(t('remove'))+'">'+ic('ic-trash')+'</button></td></tr>';
   });
   h+='</tbody></table></div>'+pager(list.length,a.f.sitePage,per,'sitePage');
-  h+='<p class="quiet">'+ic('ic-info')+esc(t('sitesNote'))+' CSV: name, category, location, '+esc(ws.unit)+', crit, tag, weight, min, max, days(7×1/0), blackout(|), active.</p></section>';
+  h+='<p class="quiet">'+ic('ic-info')+esc(t('sitesNote'))+' CSV: name, category, location, '+esc(ws.unit)+', crit, tag, weight, min, max, gap_min, gap_max, days(7×1/0), blackout(|), active.</p></section>';
   return h+locationsCard();
 }
 function locationsCard(){
@@ -483,7 +492,7 @@ function locationsCard(){
   const cs={},cp={};ws.sites.forEach(s=>{if(s.loc)cs[s.loc]=(cs[s.loc]||0)+1});ws.people.forEach(p=>{if(p.homeLoc)cp[p.homeLoc]=(cp[p.homeLoc]||0)+1});
   const list=L0.slice().sort((x,y)=>x.km-y.km||x.name.localeCompare(y.name));
   const mx=Math.max(10,...list.map(l=>l.km));
-  let h='<section class="card" id="locations-card"><div class="card-head"><div><div class="kicker">'+esc(t('kLoc'))+'</div><h2 class="ctitle">'+esc(t('locT'))+' <span class="muted mono tiny">'+L0.length+'</span></h2></div><div class="row"><button class="btn sm" data-act="addLoc">'+ic('ic-plus')+esc(t('addLoc'))+'</button><button class="btn sm ghost" data-act="csvImport" data-kind="locations">'+ic('ic-up')+esc(t('importCsv'))+'</button></div></div>';
+  let h='<section class="card" id="locations-card"><div class="card-head"><div><div class="kicker">'+esc(t('kLoc'))+'</div><h2 class="ctitle">'+esc(t('locT'))+' <span class="muted mono tiny">'+L0.length+'</span></h2></div><div class="row"><button class="btn sm" data-act="addLoc">'+ic('ic-plus')+esc(t('addLoc'))+'</button><button class="btn sm ghost" data-act="csvImport" data-kind="locations">'+ic('ic-up')+esc(t('importCsv'))+'</button>'+tplMenu('locations')+'</div></div>';
   if(!L0.length){h+='<div class="goal-empty">'+ic('ic-pin')+'<span>'+esc(t('noLocs'))+'</span></div></section>';return h}
   h+='<div class="locgrid">'+list.map(l=>'<div class="locitem'+(l.unknown?' unk':'')+'"><input class="inp bare" data-bind="loc" data-id="'+esc(l.id)+'" data-f="name" value="'+esc(l.name)+'"><span class="numwrap"><input class="inp num s" type="number" min="0" step="1" data-bind="loc" data-id="'+esc(l.id)+'" data-f="km" value="'+l.km+'"><span class="unit">'+unitL()+'</span></span><div class="locbar"><i style="width:'+(l.km/mx*100)+'%"></i></div><span class="mono tiny muted" title="'+esc(t('locUse'))+'">'+(cs[l.id]||0)+' · '+(cp[l.id]||0)+'</span><button class="ibtn" data-act="delLoc" data-id="'+esc(l.id)+'">'+ic('ic-trash')+'</button></div>').join('')+'</div>'
     +'<p class="quiet">'+ic('ic-info')+esc(t('locNote'))+'</p>'+routesBlock()+'</section>';
@@ -512,7 +521,7 @@ function peopleView(){
   const counts={};ws.people.forEach(p=>p.roles.forEach(r=>counts[r]=(counts[r]||0)+1));
   const list=ws.people.filter(p=>(fr==='all'||p.roles.includes(fr))&&(!q||p.name.toLowerCase().includes(q)));
   let h='<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kList'))+'</div><h2 class="ctitle">'+esc(t('tabPeople'))+' <span class="muted mono tiny">'+ws.people.length+'</span></h2></div>'
-    +'<div class="row"><button class="btn primary sm" data-act="addPerson">'+ic('ic-plus')+esc(t('addPerson'))+'</button><button class="btn sm" data-act="csvImport" data-kind="people">'+ic('ic-up')+esc(t('importCsv'))+'</button><button class="btn sm ghost" data-act="csvTpl" data-kind="people">'+esc(t('template'))+'</button><button class="btn sm ghost" data-act="csvExport" data-kind="people">'+ic('ic-down')+esc(t('exportCsv'))+'</button></div></div>';
+    +'<div class="row"><button class="btn primary sm" data-act="addPerson">'+ic('ic-plus')+esc(t('addPerson'))+'</button><button class="btn sm" data-act="csvImport" data-kind="people">'+ic('ic-up')+esc(t('importCsv'))+'</button>'+tplMenu('people')+'<button class="btn sm ghost" data-act="csvExport" data-kind="people">'+ic('ic-down')+esc(t('exportCsv'))+'</button></div></div>';
   h+='<div class="toolbar"><label class="search">'+ic('ic-search')+'<input class="inp slim" type="search" placeholder="'+esc(t('search'))+'" data-bind="peopleQ" value="'+esc(a.f.peopleQ||'')+'"></label>'
     +'<button class="fchip'+(fr==='all'?' on':'')+'" data-act="peopleRole" data-v="all">'+esc(t('all'))+' <small>'+ws.people.length+'</small></button>'
     +ws.roles.map(r=>'<button class="fchip'+(fr===r.id?' on':'')+'" data-act="peopleRole" data-v="'+esc(r.id)+'"><span class="dot" style="--c:'+esc(r.color)+'"></span>'+esc(r.name)+' <small>'+(counts[r.id]||0)+'</small></button>').join('')+'</div>';
@@ -686,6 +695,7 @@ function insightsView(){
     +kpi(t('kBreaks'),nBreak+nOpen,nOpen+' '+t('open')+' · '+nBreak+' ⚠',nBreak+nOpen?'bad':'good')
     +kpi(t('kCover'),(st.covered||0)+' / '+m.sites.length,Math.round((st.covered||0)/Math.max(1,m.sites.length)*100)+'%')
     +kpi(t('kCrit'),st.critN?Math.round(st.critHit/st.critN*100)+'%':'—',t('kCritS',{g:r1(st.rankGap||0)}),st.critN&&st.critHit<st.critN?'':'good')
+    +(st.rc?kpi(t('kRc'),st.rc.due?Math.round(st.rc.met/Math.max(1,st.rc.due)*100)+'%':'—',t('kRcS',{e:st.rc.early,o:st.rc.over}),st.rc.early+st.rc.over?'':'good'):'')
     +kpi(t('kCost'),fmtN(r.cost),r.runs+'× · '+fmtMs(r.ms))
     +'</div></section>';
   const cnt=k=>D.iss.filter(x=>x.k===k).length;
@@ -702,6 +712,7 @@ function insightsView(){
     +chk(t('a_dup'),cnt('dup'),R.distinct)
     +chk(t('a_bounds'),cnt('sitemax')+cnt('sitemin'))
     +chk(t('a_gap'),cnt('sitegap'),R.siteGap>0)
+    +chk(t('a_recency'),cnt('rcearly')+cnt('rcover'),M.normRecency(ws.recency).mode!=='off')
     +chk(t('a_pairs'),cnt('avoid'))
     +chk(t('a_book'),cnt('rulesite')+cnt('ruleday')+cnt('rulewith')+D.iss.filter(x=>(x.k==='ruleteam'||x.k==='rulecount')&&x.sev==='warn').length,(ws.book||[]).some(r=>r.on))
     +'</div></section>';
@@ -748,7 +759,7 @@ function kpi(l,v,s,cls){return '<div class="kpi '+(cls||'')+'"><div class="kl">'
 
 function workspaceView(){
   const a=A(),ws=a.ws;
-  let h=sourceCard()+'<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kWsList'))+'</div><h2 class="ctitle">'+esc(t('wsT'))+'</h2></div>'
+  let h=sourceCard()+templatesHub()+'<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kWsList'))+'</div><h2 class="ctitle">'+esc(t('wsT'))+'</h2></div>'
     +'<label class="fld"><span>'+esc(t('wsName'))+'</span><input class="inp slim" data-bind="wsName" value="'+esc(ws.name)+'" style="min-width:220px"></label></div><div class="wscards">';
   a.ix.list.slice().sort((x,y)=>y.updated-x.updated).forEach(it=>{
     const on=it.id===ws.id;
@@ -762,7 +773,7 @@ function workspaceView(){
     +'</div><p class="quiet">'+ic('ic-info')+esc(t('wsNote'))+'</p></section>';
   h+='<div class="grid2"><section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kSnaps'))+'</div><h2 class="ctitle">'+esc(t('snapsT'))+'</h2></div><button class="btn sm" data-act="snapSave" '+(ws.plan?'':'disabled')+'>'+ic('ic-camera')+esc(t('saveSnap'))+'</button></div>';
   if(!ws.snapshots.length)h+='<div class="muted tiny">'+esc(t('noSnaps'))+'</div>';
-  ws.snapshots.forEach(s=>{h+='<div class="snap"><span class="sn">'+esc(s.name)+'</span><span class="sm">'+esc(new Date(s.at).toLocaleString(L()==='ar'?'ar-EG':'en-GB',{dateStyle:'short',timeStyle:'short'}))+' · '+esc(t('cost'))+' '+fmtN(s.plan.res.cost)+'</span><button class="btn sm" data-act="snapRestore" data-id="'+esc(s.id)+'">'+esc(t('restore'))+'</button><button class="ibtn" data-act="snapDel" data-id="'+esc(s.id)+'">'+ic('ic-trash')+'</button></div>'});
+  ws.snapshots.forEach(s=>{h+='<div class="snap"><span class="sn">'+esc(s.name)+'</span><span class="sm">'+esc(new Date(s.at).toLocaleString(L()==='ar'?'ar-EG':'en-GB',{dateStyle:'short',timeStyle:'short'}))+' · '+esc(t('cost'))+' '+fmtN(s.plan.res.cost)+'</span><button class="btn sm" data-act="snapRestore" data-id="'+esc(s.id)+'">'+esc(t('restore'))+'</button><button class="btn sm ghost" data-act="snapHist" data-id="'+esc(s.id)+'" title="'+esc(t('histAddPlan'))+'">'+ic('ic-hist')+esc(t('histSnap'))+'</button><button class="ibtn" data-act="snapDel" data-id="'+esc(s.id)+'">'+ic('ic-trash')+'</button></div>'});
   h+='<p class="quiet">'+ic('ic-info')+esc(t('snapNote'))+'</p></section>';
   h+='<section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kIO'))+'</div><h2 class="ctitle">'+esc(t('ioT'))+'</h2></div></div><div class="setgrid">'
     +'<div class="setrow"><span class="rl">JSON</span><button class="btn sm" data-act="wsExport">'+ic('ic-down')+esc(t('expJson'))+'</button><button class="btn sm" data-act="wsImport">'+ic('ic-up')+esc(t('impJson'))+'</button></div>'
@@ -797,7 +808,7 @@ function paletteList(items,sel){
   return items.map((it,i)=>'<div class="pal-item'+(i===sel?' on':'')+'" data-act="palRun" data-i="'+i+'">'+ic(it.icon||'ic-cmd')+'<span>'+esc(it.label)+'</span><small>'+esc(it.kind)+'</small></div>').join('');
 }
 function kbdModal(){
-  const rows=[['<kbd>1</kbd>–<kbd>7</kbd>',t('kbTabs')],['<kbd>G</kbd>',t('kbSolve')],['<kbd>R</kbd>',t('kbReroll')],['<kbd>E</kbd>',t('kbExport')],['<kbd>L</kbd>',t('kbLayout')],['<kbd>Ctrl</kbd><kbd>K</kbd>',t('kbPalette')],['<kbd>Ctrl</kbd><kbd>Z</kbd> / <kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>Z</kbd>',t('kbUndo')],['<kbd>?</kbd>',t('kbHelp')]];
+  const rows=[['<kbd>1</kbd>–<kbd>8</kbd>',t('kbTabs')],['<kbd>G</kbd>',t('kbSolve')],['<kbd>R</kbd>',t('kbReroll')],['<kbd>E</kbd>',t('kbExport')],['<kbd>L</kbd>',t('kbLayout')],['<kbd>Ctrl</kbd><kbd>K</kbd>',t('kbPalette')],['<kbd>Ctrl</kbd><kbd>Z</kbd> / <kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>Z</kbd>',t('kbUndo')],['<kbd>?</kbd>',t('kbHelp')]];
   return '<div class="modal sm" role="dialog" aria-modal="true"><div class="mhead"><div><div class="kicker">'+esc(t('kbdT'))+'</div><h2 class="ctitle">'+esc(t('kbdT'))+'</h2></div><button class="ibtn" data-act="modalClose">'+ic('ic-x')+'</button></div><div class="kbgrid msec">'+rows.map(([k,l])=>'<span>'+k+'</span><span>'+esc(l)+'</span>').join('')+'</div></div>';
 }
 const lvlSel=()=>M.LEVELS.map(v=>[String(v),v+' · '+t('lvl'+v)]);
@@ -945,10 +956,12 @@ function eqDefs(){
       ['hard','t_hard','20000 per breach','20000\\,n_{hard}'],
       ['rest','t_restH',(st?'40000':'300')+' per breach',(st?'40000':'300')+'\\,n_{rest}'],
       ['distinct','t_distinct','2500 per duplicate','2500\\,n_{dup}'],
-      ['bookH','t_bookH',(st?'40000':'5000')+' per must-rule breach',(st?'40000':'5000')+'\\,n_{must}']
+      ['bookH','t_bookH',(st?'40000':'5000')+' per must-rule breach',(st?'40000':'5000')+'\\,n_{must}'],
+      ['recencyH','t_recencyH',(st?'40000':'5000')+'·(1+short/min) per too-early revisit (when the minimum is a must)',(st?'40000':'5000')+'\\,(1+\\frac{m-g}{m})']
     ],
     soft:[
       ['goals','goals','t_goals','Σ 120·w·short + 250·w·over','\\sum_g 120\\,w\\,\\mathrm{short}_g + 250\\,w\\,\\mathrm{over}_g'],
+      ['recency','recency','t_recency','Σ_s w·(20+80·(min−gap)/min)[early] + 25·w·(gap−max)/max[late] + 120·w[overdue] + 30·w·(P−g)/P[same person]','\\sum_s w\\big(20+80\\tfrac{m-g}{m}\\big)[g<m] + 25\\,w\\tfrac{g-M}{M}[g>M] + 120\\,w\\,[\\mathrm{overdue}]'],
       ['book','book','t_book','Σ_r w_r·(1.2·[site/day] + 3·[avoid-with] − 0.8·[pair-with] + 2·team_gap + 2·count_gap)','\\sum_r w_r\\big(1.2\\,[\\mathrm{site/day}] + 3\\,[\\mathrm{avoid}] - 0.8\\,[\\mathrm{pair}] + 2\\,\\mathrm{team}_r + 2\\,\\mathrm{count}_r\\big)'],
       ['rank','rank','t_rank','Σ w·(4·def·(1.5+4·def) + 0.6·waste)','\\sum w\\big(4\\,\\delta(1.5+4\\delta) + 0.6\\,\\omega\\big)'],
       ['fair','fair','t_fair','Σ 1.5·w·(load − target)²','\\sum_p 1.5\\,w\\,(L_p - T_p)^2'],
@@ -1033,7 +1046,143 @@ function sourceCard(){
     +'<div class="setrow"><span class="rl">'+esc(t('srcExport'))+'<small>'+esc(t('srcExportN'))+'</small></span><button class="btn sm" data-act="dsExport">'+ic('ic-down')+esc(t('srcExportB'))+'</button><button class="btn sm ghost" data-act="dsJson">'+ic('ic-code')+esc(t('bJson'))+'</button></div>'
     +'</div><p class="quiet">'+ic('ic-info')+esc(t('sourceNote'))+'</p></section>';
 }
+/* ================= Templates & uploads ================= */
+function tplMenu(kind){
+  return '<button class="btn sm ghost" data-act="tplDl" data-kind="'+kind+'" data-fmt="csv" title="'+esc(t('template'))+' CSV">'+ic('ic-file')+esc(t('template'))+'</button>'
+    +'<button class="btn sm ghost" data-act="tplDl" data-kind="'+kind+'" data-fmt="xlsx" title="'+esc(t('template'))+' Excel">'+ic('ic-sheet')+'xlsx</button>';
+}
+const TPL_KINDS=[['history','ic-hist',['csv','xlsx']],['sites','ic-build',['csv','xlsx']],['people','ic-users',['csv','xlsx']],['locations','ic-pin',['csv','xlsx']],['book','ic-flip',['json']],['dataset','ic-layers',['json']]];
+function templatesHub(){
+  let h='<section class="card" id="templates-card"><div class="card-head"><div><div class="kicker">'+esc(t('kTpl'))+'</div><h2 class="ctitle">'+esc(t('tplHubT'))+'</h2></div></div><div class="tplhub">';
+  TPL_KINDS.forEach(([k,i,f])=>{
+    h+='<div class="tplrow"><span class="tplname">'+ic(i)+esc(t('tk_'+k))+'</span><span class="tplacts">'
+      +f.map(x=>'<button class="btn sm ghost" data-act="tplDl" data-kind="'+k+'" data-fmt="'+x+'">'+ic('ic-down')+esc(t(x==='csv'?'tplCsv':x==='xlsx'?'tplXlsx':'tplJson'))+'</button>').join('')
+      +'<button class="btn sm" data-act="tplUp" data-kind="'+k+'">'+ic('ic-up')+esc(t('upload'))+'</button></span></div>';
+  });
+  return h+'</div><p class="quiet">'+ic('ic-info')+esc(t('tplHubNote'))+'</p></section>';
+}
+
+/* ================= History view ================= */
+const RC_PRESETS=[['m1',{mode:'range',min:25,max:40}],['m2',{mode:'range',min:45,max:75}],['q',{mode:'range',min:80,max:100}],['rnd',{mode:'random',min:30,max:90,jitter:5}],['min60',{mode:'min',min:60}]];
+function historyView(){return timingCard()+dueCard()+historyCard()}
+function rcStrip(rc){
+  if(rc.mode==='off')return '';
+  const lo=rc.min,hi=rc.mode==='min'?0:rc.max,top=Math.max(30,(hi||lo)*1.35,lo+20);
+  const j=rc.mode==='random'?rc.jitter:0;
+  const pos=x=>clamp(x/top*100,0,100);
+  let h='<div class="rcstrip" dir="ltr"><div class="rctrack"><i class="rcearly" style="width:'+pos(lo)+'%"></i>';
+  h+='<i class="rcok'+(hi?'':' open')+'" style="left:'+pos(lo)+'%;width:'+((hi?pos(hi):100)-pos(lo))+'%"></i>';
+  if(hi)h+='<i class="rclate" style="left:'+pos(hi)+'%;width:'+(100-pos(hi))+'%"></i>';
+  if(j)h+='<i class="rcjit" style="left:'+pos(Math.max(0,lo-j))+'%;width:'+(pos(hi+j)-pos(Math.max(0,lo-j)))+'%"></i>';
+  h+='</div><div class="rclabels"><span style="left:0">0</span><span style="left:'+pos(lo)+'%">'+lo+'</span>'+(hi?'<span style="left:'+pos(hi)+'%">'+hi+'</span>':'<span style="left:97%">∞</span>')+'</div>'
+    +'<div class="rclegend"><span><i class="rcearly"></i>'+esc(t('st_early'))+'</span><span><i class="rcok"></i>'+esc(t('st_due'))+'</span>'+(hi?'<span><i class="rclate"></i>'+esc(t('st_late'))+'</span>':'')+(j?'<span><i class="rcjit"></i>± '+j+'</span>':'')+'</div></div>';
+  return h;
+}
+function timingCard(){
+  const a=A(),ws=a.ws,rc=M.normRecency(ws.recency);
+  const num=(k,v)=>'<input class="inp num" type="number" min="0" data-bind="rc" data-k="'+k+'" value="'+v+'">';
+  let h='<section class="card" id="timing-card"><div class="card-head"><div><div class="kicker">'+esc(t('kTiming'))+'</div><h2 class="ctitle">'+esc(t('rcT'))+'</h2></div>'
+    +'<div class="row">'+dd('rcPreset','','',RC_PRESETS.map(([k])=>[k,t('rcp_'+k)]),{ph:t('rcPresets'),cls:'ghostdd'})+'</div></div>';
+  h+='<div class="rcmodes">'+M.RC_MODES.map(k=>'<button class="rcmode'+(rc.mode===k?' on':'')+'" data-act="rcMode" data-v="'+k+'"><b>'+esc(t('rc_'+k))+'</b><small>'+esc(t('rcD_'+k))+'</small></button>').join('')+'</div>';
+  if(rc.mode!=='off'){
+    h+=rcStrip(rc)+'<div class="grid2 tight"><div class="setgrid">'
+      +'<div class="setrow"><span class="rl">'+esc(t('rcMin'))+'</span><span class="numwrap">'+num('min',rc.min)+'<span class="unit">d</span></span></div>'
+      +(rc.mode!=='min'?'<div class="setrow"><span class="rl">'+esc(t('rcMax'))+'</span><span class="numwrap">'+num('max',rc.max)+'<span class="unit">d</span></span></div>':'')
+      +(rc.mode==='random'?'<div class="setrow"><span class="rl">'+esc(t('rcJitter'))+'</span><span class="numwrap">'+num('jitter',rc.jitter)+'<span class="unit">d</span></span><button class="btn sm" data-act="rcReroll">'+ic('ic-dice')+esc(t('rcReroll'))+'</button></div>':'')
+      +'<div class="setrow"><span class="rl">'+esc(t('rcHard'))+'<small>'+esc(t('rcHardN'))+'</small></span>'+swBtn(rc.hard,'rcToggle','data-k="hard"')+'</div>'
+      +'<div class="setrow"><span class="rl">'+esc(t('rcInPlan'))+'<small>'+esc(t('rcInPlanN'))+'</small></span>'+swBtn(rc.inPlan,'rcToggle','data-k="inPlan"')+'</div>'
+      +(rc.mode!=='min'?'<div class="setrow"><span class="rl">'+esc(t('rcOver'))+'<small>'+esc(t('rcOverN'))+'</small></span>'+swBtn(rc.overdue,'rcToggle','data-k="overdue"')+'</div>':'')
+      +'</div><div class="setgrid">'
+      +'<div class="setrow"><span class="rl">'+esc(t('rcFresh'))+'<small>'+esc(t('rcFreshN'))+'</small></span><div class="seg">'+['neutral','due'].map(k=>'<button class="'+(rc.fresh===k?'on':'')+'" data-act="rcFresh" data-v="'+k+'">'+esc(t('rcF_'+k))+'</button>').join('')+'</div></div>'
+      +'<div class="setrow"><span class="rl">'+esc(t('rcLook'))+'<small>'+esc(t('rcLookN'))+'</small></span><span class="numwrap">'+num('lookback',rc.lookback)+'<span class="unit">d</span></span></div>'
+      +'<div class="setrow"><span class="rl">'+esc(t('rcPerson'))+'<small>'+esc(t('rcPersonN'))+'</small></span><span class="numwrap">'+num('personDays',rc.personDays)+'<span class="unit">d</span></span></div>'
+      +'<div class="setrow"><span class="rl">'+esc(t('rcWin'))+'<small>'+esc(t('rcWinN'))+'</small></span>'+swBtn(rc.inWindow,'rcToggle','data-k="inWindow"')+'</div>'
+      +'</div></div>';
+    const pc=ws.categories.filter(c=>c.planned);
+    if(pc.length){
+      h+='<div class="grouplbl" style="margin-top:16px">'+esc(t('rcCat'))+'</div><div class="rccats">'+pc.map(c=>{const x=rc.cat[c.id]||{};
+        return '<div class="rccat">'+ctag(c)+'<span class="numwrap"><input class="inp num s" type="number" min="0" placeholder="'+rc.min+'" data-bind="rcCat" data-c="'+esc(c.id)+'" data-k="min" value="'+(x.min==null?'':x.min)+'">'+(rc.mode!=='min'?'<span class="muted">–</span><input class="inp num s" type="number" min="0" placeholder="'+rc.max+'" data-bind="rcCat" data-c="'+esc(c.id)+'" data-k="max" value="'+(x.max==null?'':x.max)+'">':'')+'<span class="unit">d</span></span></div>'}).join('')+'</div>'
+        +'<p class="quiet">'+ic('ic-info')+esc(t('rcCatN'))+'</p>';
+    }
+  }
+  return h+'<p class="quiet">'+ic('ic-info')+esc(t('rcNote'))+'</p></section>';
+}
+const DUE_ORDER={late:0,due:1,never:2,early:3,ok:4};
+function dueCard(){
+  const a=A(),ws=a.ws,rc=M.normRecency(ws.recency);
+  const rg=rangeOf(ws);const withPlan=!!a.f.dueWithPlan;
+  const asOf=withPlan?rg.end:rg.start;
+  const board=M.recencyBoard(ws,asOf,withPlan);
+  const cnt={};board.forEach(x=>cnt[x.st]=(cnt[x.st]||0)+1);
+  const fs=a.f.dueSt||'all';
+  const list=board.filter(x=>fs==='all'||x.st===fs);
+  list.sort((x,y)=>DUE_ORDER[x.st]-DUE_ORDER[y.st]||((y.ago==null?-1:y.ago)-(x.ago==null?-1:x.ago))||x.s.name.localeCompare(y.s.name));
+  const per=30,pages=Math.max(1,Math.ceil(list.length/per));a.f.duePage=clamp(a.f.duePage||0,0,pages-1);
+  const page=list.slice(a.f.duePage*per,(a.f.duePage+1)*per);
+  let h='<section class="card" id="due-card"><div class="card-head"><div><div class="kicker">'+esc(t('kDue'))+'</div><h2 class="ctitle">'+esc(t('dueT'))+' <span class="muted mono tiny">'+esc(t('dueAsOf',{d:fmtDS(asOf)+' '+pISO(asOf).getFullYear()}))+'</span></h2></div>'
+    +'<div class="row"><span class="lbl">'+esc(t('dueWithPlan'))+'</span>'+swBtn(withPlan,'dueWithPlan','',true)+'</div></div>';
+  if(rc.mode==='off')h+='<div class="banner">'+ic('ic-info')+'<span class="grow">'+esc(t('dueOff'))+'</span></div>';
+  h+='<div class="toolbar slim"><button class="fchip'+(fs==='all'?' on':'')+'" data-act="dueSt" data-v="all">'+esc(t('all'))+' <small>'+board.length+'</small></button>'
+    +['late','due','never','early','ok'].filter(k=>cnt[k]).map(k=>'<button class="fchip'+(fs===k?' on':'')+'" data-act="dueSt" data-v="'+k+'"><span class="stdot st-'+k+'"></span>'+esc(t('st_'+k))+' <small>'+cnt[k]+'</small></button>').join('')+'</div>';
+  if(!board.length)return h+'</section>';
+  h+='<div class="tblwrap"><table class="duetbl"><thead><tr><th>'+esc(t('site'))+'</th><th>'+esc(t('dueLast'))+'</th><th class="numc">'+esc(t('dueAgo'))+'</th><th>'+esc(t('dueWin'))+'</th><th>'+esc(t('dueNext'))+'</th><th class="numc">'+esc(t('dueN'))+'</th><th></th></tr></thead><tbody>';
+  page.forEach(x=>{
+    const w=x.w;const top=w?Math.max(w.hi||w.lo*1.5,x.ago||0,10):1;
+    const bar=w&&x.ago!=null?'<div class="duebar" dir="ltr"><i class="dwin" style="left:'+(w.lo/top*100)+'%;width:'+(((w.hi||top)-w.lo)/top*100)+'%"></i><b style="left:'+Math.min(100,x.ago/top*100)+'%"></b></div>':'';
+    h+='<tr><td><span class="fname"><span class="dot" style="--c:'+esc(catColor(x.s.cat))+'"></span>'+esc(x.s.name)+'</span></td>'
+      +'<td class="mono tiny">'+(x.last?esc(x.last):'—')+'</td>'
+      +'<td class="numc mono">'+(x.ago==null?'—':x.ago)+'</td>'
+      +'<td>'+(w?'<span class="mono tiny">'+w.lo+(w.hi?'–'+w.hi:'+')+' d'+(w.target!=null?' · ≈'+w.target:'')+'</span>'+bar:'<span class="muted">—</span>')+'</td>'
+      +'<td class="mono tiny">'+(x.from?esc(fmtDS(x.from))+(x.by?' → '+esc(fmtDS(x.by)):' →'):'—')+'</td>'
+      +'<td class="numc mono">'+x.n+'</td>'
+      +'<td><span class="stchip st-'+x.st+'">'+esc(t('st_'+x.st))+'</span></td></tr>';
+  });
+  return h+'</tbody></table></div>'+pager(list.length,a.f.duePage,per,'duePage')+'</section>';
+}
+function historyCard(){
+  const a=A(),ws=a.ws,H=ws.history||[];
+  const q=(a.f.histQ||'').trim().toLowerCase(),fk=a.f.histF||'all';
+  const sName=h=>{const s=h.site&&byId(ws.sites,h.site);return s?s.name:h.sn||'—'};
+  const pNames=h=>h.people.map(id=>(byId(ws.people,id)||{}).name).filter(Boolean);
+  const unm=h=>!h.site||(h.pn&&h.pn.length);
+  const list=H.filter(h=>(fk==='all'||(fk==='unm'&&unm(h)))&&(!q||sName(h).toLowerCase().includes(q)||h.date.includes(q)||pNames(h).concat(h.pn||[]).join(' ').toLowerCase().includes(q)||(h.note||'').toLowerCase().includes(q)));
+  const per=50,pages=Math.max(1,Math.ceil(list.length/per));a.f.histPage=clamp(a.f.histPage||0,0,pages-1);
+  const page=list.slice(a.f.histPage*per,(a.f.histPage+1)*per);
+  const places=new Set(H.filter(h=>h.site).map(h=>h.site)).size;
+  const nUnm=H.filter(unm).length;
+  const span=H.length?H[H.length-1].date+' – '+H[0].date:'';
+  let h='<section class="card" id="history-card"><div class="card-head"><div><div class="kicker">'+esc(t('kHist'))+'</div><h2 class="ctitle">'+esc(t('histT'))+' <span class="muted mono tiny">'+H.length+'</span></h2></div>'
+    +'<div class="row"><button class="btn primary sm" data-act="tplUp" data-kind="history">'+ic('ic-up')+esc(t('histUpload'))+'</button>'
+    +'<button class="btn sm ghost" data-act="tplDl" data-kind="history" data-fmt="csv">'+ic('ic-file')+esc(t('histTplCsv'))+'</button>'
+    +'<button class="btn sm ghost" data-act="tplDl" data-kind="history" data-fmt="xlsx">'+ic('ic-sheet')+esc(t('histTplXlsx'))+'</button>'
+    +'<button class="btn sm" data-act="histFromPlan" '+(ws.plan?'':'disabled')+'>'+ic('ic-cal')+esc(t('histAddPlan'))+'</button></div></div>';
+  if(H.length)h+='<div class="scope-stats" style="margin-bottom:10px"><span class="chip">'+esc(span)+'</span><span class="chip">'+places+' '+esc(t('sites'))+'</span>'+(nUnm?'<span class="chip warn">'+ic('ic-alert')+nUnm+' '+esc(t('histFilterUnk'))+'</span>':'')+'</div>';
+  h+='<div class="toolbar"><label class="search">'+ic('ic-search')+'<input class="inp slim" type="search" placeholder="'+esc(t('search'))+'" data-bind="histQ" value="'+esc(a.f.histQ||'')+'"></label>'
+    +'<button class="fchip'+(fk==='all'?' on':'')+'" data-act="histF" data-v="all">'+esc(t('histFilterAll'))+' <small>'+H.length+'</small></button>'
+    +(nUnm?'<button class="fchip'+(fk==='unm'?' on':'')+'" data-act="histF" data-v="unm">'+esc(t('histFilterUnk'))+' <small>'+nUnm+'</small></button>':'')
+    +(H.length?'<span class="grow"></span><button class="btn sm ghost" data-act="histExport" data-fmt="csv">'+ic('ic-down')+esc(t('histExpCsv'))+'</button><button class="btn sm ghost" data-act="histExport" data-fmt="xlsx">'+ic('ic-down')+esc(t('histExpXlsx'))+'</button>'+(nUnm?'<button class="btn sm ghost" data-act="histRelink">'+ic('ic-undo')+esc(t('histRelink'))+'</button>':'')+'<button class="btn sm ghost" data-act="histClear">'+ic('ic-trash')+esc(t('histClear'))+'</button>':'')+'</div>';
+  const so=ws.sites.map(s=>[s.id,s.name,catColor(s.cat),(locOf(s.loc)||{}).name||'']);
+  h+='<div class="histadd"><input class="inp slim" type="date" id="hAddDate" value="'+esc(a.f.hAddDate||addISO(todayISO(),-1))+'" aria-label="'+esc(t('histDate'))+'">'
+    +dd('hAddSite','',a.f.hAddSite||'',so,{search:true,ph:a.f.hAddSite&&byId(ws.sites,a.f.hAddSite)?null:t('histPickPlace')})
+    +'<input class="inp slim grow" id="hAddPeople" placeholder="'+esc(t('histPeople'))+' · '+esc(ws.people.slice(0,2).map(p=>p.name).join(', '))+'" value="'+esc(a.f.hAddPeople||'')+'">'
+    +'<button class="btn sm" data-act="histAddOne">'+ic('ic-plus')+esc(t('histAddOne'))+'</button></div>';
+  if(!H.length)h+='<div class="goal-empty">'+ic('ic-hist')+'<span>'+esc(t('histEmpty'))+'</span></div>';
+  else{
+    h+='<div class="tblwrap"><table class="histtbl"><thead><tr><th>'+esc(t('histDate'))+'</th><th>'+esc(t('histPlace'))+'</th><th>'+esc(t('histPeople'))+'</th><th>'+esc(t('histSrc'))+'</th><th>'+esc(t('histNote'))+'</th><th></th></tr></thead><tbody>';
+    if(!page.length)h+='<tr><td colspan="6" class="empty">'+esc(t('noMatch'))+'</td></tr>';
+    page.forEach(x=>{const s=x.site&&byId(ws.sites,x.site);
+      h+='<tr><td class="mono tiny">'+esc(x.date)+' <small class="muted">'+esc(arr('dows')[dowOf(x.date)])+'</small></td>'
+        +'<td>'+(s?'<span class="fname"><span class="dot" style="--c:'+esc(catColor(s.cat))+'"></span>'+esc(s.name)+'</span>':'<span class="fname">'+esc(x.sn||'—')+'</span> <span class="chip warn">'+esc(t('histUnknown'))+'</span>')+'</td>'
+        +'<td><div class="team">'+x.people.map(id=>{const p=byId(ws.people,id);if(!p)return '';const ro=roleOf(p.roles[0]);return '<span class="pill" style="--c:'+esc(ro?ro.color:'#999')+'" data-pid="'+esc(p.id)+'">'+esc(p.name)+'</span>'}).join('')+(x.pn||[]).map(n=>'<span class="pill open" title="'+esc(t('histUnknown'))+'">'+esc(n)+'</span>').join('')+'</div></td>'
+        +'<td><span class="chip">'+esc(t('hs_'+x.src))+'</span></td>'
+        +'<td class="tiny">'+esc(x.note||'')+'</td>'
+        +'<td><button class="ibtn" data-act="histDel" data-id="'+esc(x.id)+'" title="'+esc(t('remove'))+'">'+ic('ic-trash')+'</button></td></tr>'});
+    h+='</tbody></table></div>'+pager(list.length,a.f.histPage,per,'histPage');
+  }
+  return h+'<p class="quiet">'+ic('ic-info')+esc(t('histNote2'))+'</p></section>';
+}
+
 function swatches(){return M.COLORS.map(c=>'<button style="--c:'+c+'" data-act="colorPick" data-c="'+c+'" aria-label="'+c+'"></button>').join('')}
 
-G.VIEWS={DD,ddPop,modelView,goalText,ruleText,jsonModal,eqModal,eqText,bookCard,ic,fmtD,fmtDL,fmtDS,unitL,derive,issueText,warnText,mast,tagline,tabs,statusHTML,planView,sitesView,peopleView,rulesView,insightsView,workspaceView,explainPop,dpkHTML,exportModal,paletteHTML,paletteList,kbdModal,swatches,r1,fmtN};
+G.VIEWS={historyView,templatesHub,DD,ddPop,modelView,goalText,ruleText,jsonModal,eqModal,eqText,bookCard,ic,fmtD,fmtDL,fmtDS,unitL,derive,issueText,warnText,mast,tagline,tabs,statusHTML,planView,sitesView,peopleView,rulesView,insightsView,workspaceView,explainPop,dpkHTML,exportModal,paletteHTML,paletteList,kbdModal,swatches,r1,fmtN};
 })(window);
