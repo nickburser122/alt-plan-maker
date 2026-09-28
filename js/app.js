@@ -507,7 +507,7 @@ function applyBind(bd,ds,v){
 }
 async function restoreBook(){
   const url=(APP.ws.source&&APP.ws.source.url)||APP.config.dataset;
-  try{const o=JSON.parse((await fetchFirst([url].concat(dsUrls()))).txt);const nw=M.fromDataset(o,APP.ws.name);const list=M.bookForExport(nw);commit(ws=>{ws.book=M.resolveBook(ws,list)});toast(t('bookApplied',{n:list.length}))}
+  try{const o=(await fetchDataset(url)).o;const nw=M.fromDataset(o,APP.ws.name);const list=M.bookForExport(nw);commit(ws=>{ws.book=M.resolveBook(ws,list)});toast(t('bookApplied',{n:list.length}))}
   catch(e){toast(t('invalid',{e:e.message}),'warn')}
 }
 function addRule(v,o,stay){
@@ -546,19 +546,24 @@ function applyJson(){
 async function fetchText(url){const r=await fetch(url,{cache:'no-cache'});if(!r.ok)throw new Error(r.status+' '+url);return await r.text()}
 async function fetchFirst(urls){let err;for(const u of Array.from(new Set(urls.filter(Boolean)))){try{return {url:u,txt:await fetchText(u)}}catch(e){err=e}}throw err||new Error('no dataset')}
 const dsUrls=()=>[APP.config.dataset,'data/complete_data.json','data/complete_data.json.txt'];
+async function fetchDataset(first){
+  const got=await fetchFirst([first].concat(dsUrls()));const o=JSON.parse(got.txt);let sig=got.txt;
+  const side=[['facilities',APP.config.facilities||'data/facilities.json'],['people',APP.config.people||'data/people_ranking.json']];
+  for(const [k,u] of side){if(APP.config[k]===false)continue;try{const r=await fetchFirst([u,u+'.txt']);const arr=JSON.parse(r.txt);if(Array.isArray(arr)&&arr.length){o[k]=M.overlayList(k,o[k],arr);sig+=r.txt}}catch(e){}}
+  return {url:got.url,o,hash:M.fnv(sig)};
+}
 async function checkSource(){
   const ws=APP.ws,src=ws.source;
   if(!src||src.auto===false||location.protocol==='file:'||APP.config.autoCheck===false)return;
-  try{const txt=(await fetchFirst([src.url].concat(dsUrls()))).txt;const h=M.fnv(txt);
-    if(h!==src.hash&&APP.ws===ws){APP.srcUpdate={hash:h};if(APP.view==='workspace')render();
-      toast(t('srcChanged'),'warn',{label:t('srcKeepShort'),fn:()=>refreshSource(true)})}
+  try{const h=(await fetchDataset(src.url)).hash;
+    if(h!==src.hash&&APP.ws===ws)refreshSource(true);
   }catch(e){}
 }
 async function refreshSource(keep){
   const old=APP.ws,url=(old.source&&old.source.url)||APP.config.dataset;
   try{
-    const txt=(await fetchFirst([url].concat(dsUrls()))).txt;const o=JSON.parse(txt);
-    const nw=M.fromDataset(o,old.name);nw.source={url,hash:M.fnv(txt),at:Date.now(),auto:!old.source||old.source.auto!==false};
+    const g=await fetchDataset(url);const o=g.o;
+    const nw=M.fromDataset(o,old.name);nw.source={url,hash:g.hash,at:Date.now(),auto:!old.source||old.source.auto!==false};
     let w;
     if(keep)w=M.mergeDataset(old,nw);else{w=nw;w.id=old.id;w.name=old.name;w.snapshots=old.snapshots}
     pushHist();APP.ws=w;APP.srcUpdate=null;compiledCache=null;saveNow();render();solve({quiet:true});
@@ -575,9 +580,8 @@ function applyPreset(k){
 }
 async function loadDataset(keepView){
   try{
-    const got=await fetchFirst(dsUrls());const url=got.url,txt=got.txt;
-    const o=JSON.parse(txt);const w=M.fromDataset(o,o.name||t('datasetName'));
-    w.source={url,hash:M.fnv(txt),at:Date.now(),auto:true};
+    const g=await fetchDataset();const url=g.url,o=g.o;const w=M.fromDataset(o,o.name||t('datasetName'));
+    w.source={url,hash:g.hash,at:Date.now(),auto:true};
     APP.prefs.dsBooted=true;
     saveNow();switchTo(w);if(keepView!==true)APP.view='plan';render();toast(t('imported'));
   }catch(e){toast(t('invalid',{e:e.message}),'warn')}

@@ -16,6 +16,7 @@ Bilingual (EN / العربية), deterministic, offline-first planner that build
 
 ## Features
 - **Dataset loads on open**: `data/complete_data.json` is fetched on first run, when the active workspace has no facilities, or when no dataset workspace exists yet. Falls back to `*.json.txt` names. If you open the page from `file://` you get a prompt to import the file, because browsers block local fetches.
+- **The split files win**: `data/facilities.json` and `data/people_ranking.json` are layered on top of `complete_data.json`, matched by id and then by name. They set the list of facilities and people and their name, category, location, gender, pool and ranks. `complete_data.json` still provides the distances, criticality, pools and rules. When any of these files change, the workspace updates on its own and keeps your edits. `tests/ds-check.html` compares what the app shows with the files.
 - **Rule book** (every rule can be soft with a strength, or a hard "must"):
   - `Place`: who prefers / avoids / only / never goes to a place, category, location, type, criticality ≥ / ≤, or distance.
   - `Day`: who prefers / avoids / only / never works on certain weekdays.

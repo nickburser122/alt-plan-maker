@@ -290,6 +290,16 @@ function fromDataset(o,name){
   syncLoc(w);
   return normalize(w);
 }
+function overlayList(kind,base,add){
+  base=Array.isArray(base)?base:[];const used=new Set();
+  return add.filter(x=>x&&x.name).map(x=>{
+    const b=base.find(y=>!used.has(y)&&((x.id&&y.id===x.id)||y.name===x.name));if(b)used.add(b);
+    const o=Object.assign({},b||{},x);
+    if(kind==='people'){if(x.rank==null)delete o.rank;if(!o.id)o.id='p_'+fnv(x.name)}
+    else{if(b&&x.category!=null&&x.category!==b.category)delete o.kind;if(!o.id)o.id='f_'+fnv(x.name)}
+    return o;
+  });
+}
 function mergeDataset(old,nw){
   const remap={};
   const match=(oa,na)=>na.forEach(n=>{const o=oa.find(x=>x.id===n.id)||oa.find(x=>x.name===n.name);if(o&&o.id!==n.id)remap[n.id]=o.id});
@@ -769,5 +779,5 @@ G.MV={$,$$,esc,uid,clamp,sum,avg,num,intOr,byId,clone,fnv,gini,mulberry32,
   COLORS,LEVELS,WEIGHT_KEYS,defaultWeights,defaultUseW,defaultRules,defaultEngine,TERM_DEFAULT,
   TEMPLATES,TEMPLATE_ORDER,blankWS,mkRole,mkCat,mkLoc,mkSite,mkPerson,mkGoal,normalize,migrateLegacy,fromDataset,syncLoc,
   Store,rangeOf,dayCfg,planDays,planTotal,plannable,goalSites,goalNeed,fpOf,fpWithLocks,compile,csvParse,csvRow,
-  SENSES,WHO_K,WHAT_K,RELS,TEAM_OPS,COUNT_OPS,FLIP,isHard,normRule,mkRule,whoMatch,whatMatch,resolveBook,resolveGoals,parseDates,bookForExport,toDataset,mergeDataset,locDist,arr7};
+  SENSES,WHO_K,WHAT_K,RELS,TEAM_OPS,COUNT_OPS,FLIP,isHard,normRule,mkRule,whoMatch,whatMatch,resolveBook,resolveGoals,parseDates,overlayList,bookForExport,toDataset,mergeDataset,locDist,arr7};
 })(window);
