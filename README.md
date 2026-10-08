@@ -41,6 +41,18 @@ Examples: *Abaza ≥ 3 visits to Contracted* · *Abaza + Amani together ≥ 2* (
 - **Solver**: each goal compiles to buckets (unit = place | all | person, × week). A visit contributes to a bucket when its place matches *what*, its day matches *when*, and its team satisfies *who* (≥ k matching members). Counts are kept **incrementally** (undoable deltas, so cost is O(changed visits)), and *distinct places* uses per-bucket place multiplicities. Cost per bucket is `w·w_g·(120·short + 250·over)`, or `5000|40000` per unit for must goals (term `goalsH`). A dedicated **goal-repair move** (10% of annealing moves) targets a violated bucket: it relocates a spare visit into the matching set, puts a required person on a matching visit, or removes an excess. Injected visits are restricted to their target set. *Pick* injections create optional candidate slots on the allowed days (an unused slot costs nothing), with an exact count goal on the slot group. `tests/goals-test.html` checks that incremental cost equals full recomputation.
 - **Pre-flight warnings**: goal matches no place / nobody / no day, injection outside the window, a person whose capacity is below their goal, k larger than the group, distinct-places target above the number of places.
 
+### Inject options (new)
+- **Team**: everyone (solver fills the team) · any one of them · at least k together · **all of them** · **exactly these people** (no one else) · **only from this group** (solver picks inside it). JSON `mode: any|together|all|exact|only`.
+- **Count**: `inject.per: any` (in total across matching places) or `each` (every matching place gets its own visits, up to 40 places).
+- **How many** (solver-picks mode): `inject.op: exact|min|max|between` with `n`, `n2`.
+- **Extra or instead**: `inject.add: extra` (on top of the rhythm) or `replace` (takes the place of rhythm visits, so the plan total stays the same).
+- `tests/inject-test.html` checks these (6 checks).
+
+### Fixes in this version
+- A dropdown no longer goes blank or stops responding when a background solve redraws the page while it is open. The redraw waits until the dropdown closes.
+- Dropdowns close when their button scrolls off-screen, and they never slide under the sticky tab bar. Long lists shrink to fit the space available.
+- Goal place pickers (place / category / location / type) only list plannable places and show how many there are. Before, they could list locations with no plannable facilities, so the goal matched nothing.
+
 ## Previous visits & revisit timing
 - **History list** (`ws.history`): `{date, site, people[], note, src: upload|plan|manual}`. Names that don't match are kept (`sn`, `pn`) and flagged "not in list". **Re-match names** links them later, for example after you add the facility.
 - **Sources**: upload a CSV / TSV / Excel (.xlsx/.xls/.ods) / JSON file; **Add current plan to history**; a snapshot's **→ history** button (earlier plans); quick-add one visit; `history:[{date,place,people[]}]` inside `complete_data.json`; or an optional `"history":"data/history.csv"` in `app-config.json`. Uploads merge, and duplicates (same date + place) are combined.

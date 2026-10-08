@@ -134,6 +134,7 @@ function warnText(w){
     case 'minover':{const c=catOf(w.c);return t('w_minover',{c:c?c.name:'—',need:w.need,have:w.have})}
     case 'tight':return t('w_tight',{r:rn(w.r),d1:fmtD(w.d1),d2:fmtD(w.d2),need:w.need,free:w.free});
     case 'goalshort':return t('w_goalshort',{need:w.need,have:w.have});
+    case 'injbusy':return t('w_injbusy',{g:goalText(byId(A().ws.goals,w.g)),n:w.n});
     case 'goalnone':case 'goalnoday':case 'goalnop':case 'injout':return t('w_'+w.k,{g:goalText(byId(A().ws.goals,w.g))});
     case 'goalcap':{const p=byId(A().ws.people,w.p);return t('w_goalcap',{g:goalText(byId(A().ws.goals,w.g)),p:p?p.name:'—',need:w.need,cap:w.cap})}
     case 'goalk':return t('w_goalk',{g:goalText(byId(A().ws.goals,w.g)),n:w.n,k:w.k});
@@ -260,7 +261,7 @@ function gPicker1(g,side,m,isWho,mi){
     if(m.k==='kmGe'||m.k==='kmLe')return h+'<span class="numwrap"><input class="inp num s" type="number" min="0" data-bind="goalNum" '+at+' value="'+esc(v)+'"><span class="unit">'+unitL()+'</span></span>';
     return h+dd('goalM',at+' data-f="v"',v,lvlSel(),{cls:'bdd'});
   }
-  const vo=isWho?whoVOpts(m.k):whatVOpts(m.k);
+  const vo=isWho?whoVOpts(m.k):goalWhatVOpts(m.k);
   const vals=Array.isArray(m.v)?m.v:(m.v?[m.v]:[]);
   const lab=x=>{const o=vo.find(y=>String(y[0])===String(x));return o?o[1]:x};
   h+='<span class="vchips">'+vals.map((x,i)=>(i?'<span class="vor">'+esc(t('bj_or'))+'</span>':'')+'<span class="vchip">'+esc(lab(x))+'<button data-act="goalDelV" '+at+' data-v="'+esc(x)+'" aria-label="'+esc(t('remove'))+'">'+ic('ic-x')+'</button></span>').join('');
@@ -285,8 +286,11 @@ function goalRow(g,res){
       +'<div class="gline sub"><span class="gw">'+esc(t('g_on'))+'</span><div class="seg mini">'+[['dates','gi_fixed'],['pick','gi_pick']].map(([k,l])=>'<button class="'+(g.inject.mode===k?'on':'')+'" data-act="goalInj" data-id="'+id+'" data-v="'+k+'">'+esc(t(l))+'</button>').join('')+'</div>'
       +(g.inject.mode==='dates'?'<input class="inp slim bdates" dir="ltr" data-bind="goalInjDates" data-id="'+id+'" value="'+esc(g.inject.dates)+'" placeholder="2026-10-14, 2026-10-21">':'<span class="gw">'+esc(t('gi_within'))+'</span>'+whenPicker(g,g.when))
       +'</div>'
-      +'<div class="gline sub"><span class="gw">'+esc(t('g_with'))+'</span>'+gPicker(g,'who',true)
-      +(g.who.k!=='all'?dd('goal','data-id="'+id+'" data-f="mode"',g.mode==='together'?'together':'any',[['any',t('gm_any')],['together',t('gm_together')]],{cls:'bdd'})+(g.mode==='together'?stepper('goalN','data-id="'+id+'" data-k="k"',g.k):''):'')+'</div>';
+      +'<div class="gline sub"><span class="gw">'+esc(t('gi_each'))+'</span>'+dd('goal','data-id="'+id+'" data-f="iper"',g.inject.per,[['any',t('gi_perAny')],['each',t('gi_perEach')]],{cls:'bdd'})
+      +(g.inject.mode==='pick'?dd('goal','data-id="'+id+'" data-f="iop"',g.inject.op,[['exact',t('op_exact')],['min',t('op_min')],['max',t('op_max')],['between',t('op_between')]],{cls:'bdd'})+(g.inject.op==='between'?'<span class="gw">–</span>'+stepper('goalN','data-id="'+id+'" data-k="injN2"',g.inject.n2):''):'')
+      +dd('goal','data-id="'+id+'" data-f="iadd"',g.inject.add,[['extra',t('gi_extra')],['replace',t('gi_replace')]],{cls:'bdd'})+'</div>'
+      +'<div class="gline sub"><span class="gw">'+esc(t('gi_team'))+'</span>'+gPicker(g,'who',true)
+      +(g.who.k!=='all'?dd('goal','data-id="'+id+'" data-f="mode"',g.mode,[['any',t('gm_any')],['together',t('gm_together')],['all',t('gm_all')],['exact',t('gm_exact')],['only',t('gm_only')]],{cls:'bdd'})+(g.mode==='together'?stepper('goalN','data-id="'+id+'" data-k="k"',g.k):''):'<span class="gw muted">'+esc(t('gi_auto'))+'</span>')+'</div>';
   }else{
     const perOpts=[['each',t('gp_each')],['total',t('gp_total')],['person',t('gp_person')]];
     s='<div class="gline">'+dd('goal','data-id="'+id+'" data-f="kind"',g.kind,kOpts,{cls:'bdd rel'})+dd('goal','data-id="'+id+'" data-f="per"',g.per,perOpts,{cls:'bdd'});
@@ -908,6 +912,14 @@ function whoVOpts(k){
   if(k==='rankGe'||k==='rankLe')return lvlSel();
   if(k==='homeLoc')return (ws.locations||[]).filter(l=>ws.people.some(p=>p.homeLoc===l.id)).sort((a,b)=>a.km-b.km).map(l=>[l.id,l.name,null,ws.people.filter(p=>p.homeLoc===l.id).length+'']);
   return [];
+}
+function goalWhatVOpts(k){
+  const ws=A().ws,pl=M.plannable(ws);
+  if(k==='site')return pl.map(s=>[s.id,s.name,catColor(s.cat),(locOf(s.loc)||{}).name||'']);
+  if(k==='cat')return ws.categories.filter(c=>c.planned&&pl.some(s=>s.cat===c.id)).map(c=>[c.id,c.name,c.color,pl.filter(s=>s.cat===c.id).length+'']);
+  if(k==='loc')return (ws.locations||[]).filter(l=>pl.some(s=>s.loc===l.id)).sort((a,b)=>a.km-b.km).map(l=>[l.id,l.name,null,r1(l.km)+' '+unitL()+' · '+pl.filter(s=>s.loc===l.id).length]);
+  if(k==='tag'){const c={};pl.forEach(x=>{if(x.tag)c[x.tag]=(c[x.tag]||0)+1});return Object.keys(c).sort().map(x=>[x,x,null,c[x]+''])}
+  return whatVOpts(k);
 }
 function whatVOpts(k){
   const ws=A().ws;

@@ -299,11 +299,12 @@ function Solver(P){
     for(let z=z0;z<z1;z++){
       if(!seatAct[z])continue;
       const p=seatP[z];
-      if(p<0){if(seatLock[z]!==-1){c+=OPENW;if(bd)bd.coverage+=OPENW}}
+      if(p<0){if(seatLock[z]!==-1&&!(vReq[v]>=0&&reqs[vReq[v]].only)){c+=OPENW;if(bd)bd.coverage+=OPENW}}
       else vbuf[k++]=p;
     }
     if(vReq[v]>=0){const rq=reqs[vReq[v]];let m=0;for(let i=0;i<k;i++)if(rq.pm[vbuf[i]])m++;
-      if(m<rq.need){const x=rq.need-m;if(rq.hard){t=goalPen*x;c+=t;if(bd)bd.goalsH+=t}else{t=GOALP*Wg*Math.max(rq.wf,.5)*x;c+=t;if(bd)bd.goals+=t}}}
+      const xo=rq.only?k-m:0;
+      if(m<rq.need||xo>0){const x=Math.max(0,rq.need-m)+xo;if(rq.hard){t=goalPen*x;c+=t;if(bd)bd.goalsH+=t}else{t=GOALP*Wg*Math.max(rq.wf,.5)*x;c+=t;if(bd)bd.goals+=t}}}
     if(rankOn&&k>0){
       const cr=sCrit[s];let top=-1,lo=101;
       for(let i=0;i<k;i++){const rk=rankOf(vbuf[i],s);if(rk>top)top=rk;if(rk<lo)lo=rk;
@@ -627,7 +628,7 @@ function Solver(P){
       if(vSet[v]>=0&&!vsets[vSet[v]][s])out.push({k:'injset',sev:'warn',v,s});
       if(!sAvail[s*D+vDay[v]])out.push({k:'siteoff',sev:'warn',v,s});
       const z0=vSeat0[v],z1=z0+vSeatN[v],open=new Array(R).fill(0),ps=[];
-      for(let z=z0;z<z1;z++){if(!seatAct[z])continue;const p=seatP[z];if(p<0){if(seatLock[z]!==-1)open[seatRole[z]]++}else ps.push(p)}
+      for(let z=z0;z<z1;z++){if(!seatAct[z])continue;const p=seatP[z];if(p<0){if(seatLock[z]!==-1&&!(vReq[v]>=0&&reqs[vReq[v]].only))open[seatRole[z]]++}else ps.push(p)}
       for(let r=0;r<R;r++)if(open[r])out.push({k:'open',sev:'error',v,r,n:open[r]});
       for(let i=0;i<ps.length;i++)for(let j=i+1;j<ps.length;j++)if(rel[ps[i]*N+ps[j]]===1)out.push({k:'avoid',sev:'info',v,p:ps[i],q:ps[j]});
     }
@@ -684,7 +685,7 @@ function Solver(P){
           if(cntX(cr,m)>0)out.push({k:'rulecount',sev:cr.hard?'warn':'info',p,n:m,max:cr.n,b:cr.ri})}
       }
     }
-    for(let v=0;v<V;v++){if(vReq[v]<0||siteOf[v]<0)continue;const rq=reqs[vReq[v]];let m=0;const z0=vSeat0[v],z1=z0+vSeatN[v];for(let z=z0;z<z1;z++)if(seatAct[z]&&seatP[z]>=0&&rq.pm[seatP[z]])m++;if(m<rq.need)out.push({k:'injwho',sev:rq.hard?'warn':'info',v,n:m,min:rq.need,gid:rq.gid})}
+    for(let v=0;v<V;v++){if(vReq[v]<0||siteOf[v]<0)continue;const rq=reqs[vReq[v]];let m=0;const z0=vSeat0[v],z1=z0+vSeatN[v];let all=0;for(let z=z0;z<z1;z++)if(seatAct[z]&&seatP[z]>=0){all++;if(rq.pm[seatP[z]])m++}if(m<rq.need||(rq.only&&all>m))out.push({k:'injwho',sev:rq.hard?'warn':'info',v,n:m,min:rq.need,gid:rq.gid})}
     for(let qi=0;qi<NQ;qi++){const q=GQ[qi];let n=0;for(let b=0;b<q.B&&n<40;b++){if(!q.ex[b])continue;const x=gCnt[qi][b];if(x<q.lo||(q.hi>=0&&x>q.hi)){n++;out.push({k:'goal',sev:q.hard?'warn':'info',q:qi,u:(b/q.nw)|0,w:b%q.nw,per:q.per,nw:q.nw,n:x,lo:q.lo,hi:q.hi})}}}
     for(let s=0;s<S;s++){
       const u=sUses[s].length;

@@ -151,7 +151,7 @@ function resolveBook(ws,list){
   });
 }
 /* ======== Goals: count goals (who × what × when × per × period × measure) and visit injection ======== */
-const G_KIND=['count','inject'],G_PER=['each','total','person'],G_OP=['min','max','exact','between'],G_MODE=['any','each','together','none'];
+const G_KIND=['count','inject'],G_PER=['each','total','person'],G_OP=['min','max','exact','between'],G_MODE=['any','together','all','exact','only','none'];
 function legacyWhat(g){switch(g.scope){case 'cat':case 'loc':case 'tag':case 'site':return {k:g.scope,v:g.ref?[String(g.ref)]:[]};case 'crit':return {k:'critGe',v:String(g.ref||75)}}return {k:'all',v:''}}
 function normWhen(w){w=w||{};if(w.k==='dow')return {k:'dow',v:arr7(w.v,false)};if(w.k==='dates')return {k:'dates',v:String(w.v||'').slice(0,600)};return {k:'all',v:''}}
 function whenMatch(w,iso,ds){if(!w||w.k==='all')return true;if(w.k==='dow')return !!w.v[dowOf(iso)];return (ds||parseDates(w.v)).has(iso)}
@@ -160,11 +160,14 @@ function normGoal(g){
   const what=normM(g.what||legacyWhat(g),WHAT_K);
   const n=clamp(intOr(g.n,1),0,9999);let n2=clamp(intOr(g.n2,n+1),0,9999);if(n2<n)n2=n;
   const inj=g.inject||{};
-  return {id:typeof g.id==='string'&&g.id?g.id:uid('g'),on:g.on!==false,kind:G_KIND.includes(g.kind)?g.kind:'count',label:String(g.label||'').slice(0,80),
-    what,who:normM(g.who,WHO_K),mode:G_MODE.includes(g.mode)?g.mode:'any',k:clamp(intOr(g.k,2),1,20),when:normWhen(g.when),
+  const kind=G_KIND.includes(g.kind)?g.kind:'count';
+  let mode=g.mode==='each'?'any':G_MODE.includes(g.mode)?g.mode:'any';if(kind==='count'&&mode==='exact')mode='only';
+  const iop=G_OP.includes(inj.op)?inj.op:'exact';const in1=clamp(intOr(inj.n,1),iop==='max'?0:1,50);let in2=clamp(intOr(inj.n2,in1+1),0,60);if(in2<in1)in2=in1;
+  return {id:typeof g.id==='string'&&g.id?g.id:uid('g'),on:g.on!==false,kind,label:String(g.label||'').slice(0,80),
+    what,who:normM(g.who,WHO_K),mode,k:clamp(intOr(g.k,2),1,20),when:normWhen(g.when),
     per:G_PER.includes(g.per)?g.per:'each',period:g.period==='week'?'week':'plan',measure:g.measure==='places'?'places':'visits',
     op:G_OP.includes(g.op)?g.op:'min',n,n2,hard:!!g.hard,w:clamp(num(g.w,50),0,100),
-    inject:{mode:inj.mode==='pick'?'pick':'dates',dates:String(inj.dates||'').slice(0,600),n:clamp(intOr(inj.n,1),1,50)}};
+    inject:{mode:inj.mode==='pick'?'pick':'dates',dates:String(inj.dates||'').slice(0,600),n:in1,n2:in2,op:iop,per:inj.per==='each'?'each':'any',add:inj.add==='replace'?'replace':'extra'}};
 }
 function mkGoal(o){return normGoal(Object.assign({on:true,per:'each',op:'min',n:1},o||{}))}
 function goalBounds(g){const lo=g.op==='max'?0:g.n,hi=g.op==='min'?-1:(g.op==='between'?g.n2:g.n);return {lo,hi}}
@@ -547,6 +550,10 @@ function goalSites(ws,g,list){
   return list.filter(s=>whatMatch(s,g.what));
 }
 function goalPeople(ws,g){return ws.people.filter(p=>p.active&&(g.who.k==='all'||whoMatch(p,g.who)))}
+const INJ_EACH_MAX=40;
+function injPlaces(ws,g,list){return goalSites(ws,g,list).slice(0,INJ_EACH_MAX)}
+function injBounds(ij){return ij.op==='min'?{lo:ij.n,hi:-1}:ij.op==='max'?{lo:0,hi:ij.n}:ij.op==='between'?{lo:ij.n,hi:ij.n2}:{lo:ij.n,hi:ij.n}}
+const injPinned=g=>g.kind==='inject'&&g.who.k!=='all'&&(g.mode==='exact'||g.mode==='all');
 function weeksIn(ws){const {start,end}=rangeOf(ws);return new Set(daysIn(start,end).map(d=>weekStartOf(d,ws.rules.weekStart))).size||1}
 const simpleGoal=g=>g.on&&g.kind==='count'&&g.measure==='visits'&&g.who.k==='all'&&g.per!=='person';
 function goalNeed(ws){
@@ -578,21 +585,35 @@ function planDays(ws,keepZero){
   const work=out.slice();
   const at={};out.forEach(d=>at[d.iso]=d);
   const entry=iso=>{if(!at[iso]){at[iso]={iso,cfg:dayCfg(ws,iso),n:0,extra:[]};out.push(at[iso])}return at[iso]};
+  let plist=null;
+  const take=(days,k)=>{const pool=days.filter(d=>d.n>0);while(k>0&&pool.length){pool.sort((a,b)=>b.n-a.n||(a.iso<b.iso?-1:1));const d=pool[0];d.n--;k--;if(!d.n)pool.shift()}};
   (ws.goals||[]).forEach(g=>{
     if(!g.on||g.kind!=='inject')return;
-    if(g.inject.mode==='dates'){
-      Array.from(parseDates(g.inject.dates)).filter(iso=>iso>=start&&iso<=end).sort().forEach(iso=>{const e=entry(iso);for(let i=0;i<g.inject.n;i++)e.extra.push({g:g.id,opt:0,i})});
+    const ij=g.inject,each=ij.per==='each';
+    let tgt=null;if(each){plist=plist||plannable(ws);tgt=injPlaces(ws,g,plist);if(!tgt.length)return}
+    const mult=each?tgt.length:1;
+    if(ij.mode==='dates'){
+      const ds=Array.from(parseDates(ij.dates)).filter(iso=>iso>=start&&iso<=end).sort();
+      ds.forEach(iso=>{const e=entry(iso);
+        if(each)tgt.forEach(s=>{for(let i=0;i<ij.n;i++)e.extra.push({g:g.id,opt:0,i,site:s.id})});
+        else for(let i=0;i<ij.n;i++)e.extra.push({g:g.id,opt:0,i});
+        if(ij.add==='replace')e.n=Math.max(0,e.n-ij.n*mult);
+      });
     }else{
       let cand;
       if(g.when.k==='dates')cand=Array.from(parseDates(g.when.v)).filter(iso=>iso>=start&&iso<=end).sort().map(entry);
       else cand=work.filter(d=>whenMatch(g.when,d.iso));
-      cand.slice(0,92).forEach(e=>{const per=Math.min(g.inject.n,4);for(let i=0;i<per;i++)e.extra.push({g:g.id,opt:1,i})});
+      cand=cand.slice(0,92);if(!cand.length)return;
+      const b=injBounds(ij),hi=b.hi<0?ij.n+2:b.hi;const tot=hi*mult;if(!tot)return;
+      const per=Math.min(tot,Math.max(each?2:Math.min(hi,4),Math.ceil(tot/cand.length)+1),12);
+      cand.forEach(e=>{for(let i=0;i<per;i++)e.extra.push({g:g.id,opt:1,i})});
+      if(ij.add==='replace')take(cand,b.lo*mult);
     }
   });
   out.sort((a,b)=>a.iso<b.iso?-1:a.iso>b.iso?1:0);
   return keepZero?out:out.filter(d=>d.n>0||d.extra.length);
 }
-function injectCount(ws){let n=0;(ws.goals||[]).forEach(g=>{if(!g.on||g.kind!=='inject')return;if(g.inject.mode==='dates'){const {start,end}=rangeOf(ws);n+=Array.from(parseDates(g.inject.dates)).filter(iso=>iso>=start&&iso<=end).length*g.inject.n}else n+=g.inject.n});return n}
+function injectCount(ws){let n=0;(ws.goals||[]).forEach(g=>{if(!g.on||g.kind!=='inject')return;const m=g.inject.per==='each'?injPlaces(ws,g).length:1;if(g.inject.mode==='dates'){const {start,end}=rangeOf(ws);n+=Array.from(parseDates(g.inject.dates)).filter(iso=>iso>=start&&iso<=end).length*g.inject.n*m}else n+=g.inject.n*m});return n}
 function fpOf(ws){
   return fnv(JSON.stringify([ws.roles.map(r=>r.id),ws.categories.map(c=>[c.id,c.staff,c.share,c.planned]),
     ws.sites.map(s=>[s.id,s.cat,s.km,s.loc,s.crit,s.tag,s.zone,s.weight,s.minV,s.maxV,s.days,s.blackout,s.active,s.gapMin,s.gapMax]),
@@ -623,14 +644,14 @@ function compile(ws){
   const vDay=[],vLock=[],vSeat0=[],vSeatN=[],visits=[];
   const seatVisit=[],seatRole=[],seatIdx=[],seatLock=[],seats=[];
   const injG={};(ws.goals||[]).forEach(g=>{if(g.on&&g.kind==='inject')injG[g.id]=g});
-  const vInj=[],vOptA=[];
+  const vInj=[],vOptA=[],vInjS=[];
   days.forEach((d,di)=>{
     if(!C)return;
     const slots=[];for(let k=0;k<d.n;k++)slots.push({key:d.iso+'#'+k,k,g:null,opt:0});
-    (d.extra||[]).forEach((x,j)=>slots.push({key:d.iso+'#x'+x.g+'#'+x.i,k:d.n+j,g:x.g,opt:x.opt}));
+    (d.extra||[]).forEach((x,j)=>slots.push({key:d.iso+'#x'+x.g+'#'+(x.site?x.site+'#':'')+x.i,k:d.n+j,g:x.g,opt:x.opt,site:x.site||''}));
     for(const sl of slots){
       const key=sl.key,k=sl.k,v=visits.length;
-      visits.push({key,d:di,k,inj:sl.g,opt:sl.opt});vDay.push(di);vInj.push(sl.g);vOptA.push(sl.opt);
+      visits.push({key,d:di,k,inj:sl.g,opt:sl.opt});vDay.push(di);vInj.push(sl.g);vOptA.push(sl.opt);vInjS.push(sl.site&&sIx[sl.site]!==undefined?sIx[sl.site]:-1);
       const ls=ws.locks.sites[key];vLock.push(ls&&sIx[ls]!==undefined?sIx[ls]:-2);
       vSeat0.push(seats.length);
       roles.forEach((r,ri)=>{for(let i=0;i<seatsPerRole[ri];i++){
@@ -644,7 +665,7 @@ function compile(ws){
     }
   });
   const V=visits.length,Z=seats.length;
-  let Veff=V;{const cnt={};vInj.forEach((g,v)=>{if(vOptA[v]){Veff--;cnt[g]=(cnt[g]||0)+1}});for(const g in cnt)Veff+=Math.min(cnt[g],injG[g]?injG[g].inject.n:0)}
+  let Veff=V;{const cnt={};vInj.forEach((g,v)=>{if(vOptA[v]){Veff--;cnt[g]=(cnt[g]||0)+1}});for(const g in cnt){const x=injG[g];if(!x)continue;const b=injBounds(x.inject),mult=x.inject.per==='each'?injPlaces(ws,x,sites).length:1;Veff+=Math.min(cnt[g],(b.hi<0?b.lo+1:(b.lo+b.hi)/2)*mult)}}
   const sAvail=new Array(S*D).fill(0);
   sites.forEach((s,si)=>days.forEach((d,di)=>{sAvail[si*D+di]=s.days[dowOf(d.iso)]&&!s.blackout.includes(d.iso)?1:0}));
   const pAvail=new Array(N*D).fill(0);
@@ -752,7 +773,7 @@ function compile(ws){
   roles.forEach((r,ri)=>{if(!roleMembers[ri].length)return;let cap=0;roleMembers[ri].forEach(pi=>{cap+=capOf(pi)/people[pi].roles.filter(x=>rIx[x]!==undefined).length});cap=Math.floor(cap);if(demand[ri]>cap+.01)warn.push({k:'capacity',r:r.id,need:Math.round(demand[ri]),cap})});
   cats.forEach((c,ci)=>{const mins=sum(sites.filter(s=>s.cat===c.id).map(s=>s.minV===''?0:+s.minV));if(mins>catTarget[ci]+.5)warn.push({k:'minover',c:c.id,need:mins,have:Math.round(catTarget[ci])})});
   if(goalsOn&&ws.sizing.mode!=='goals'){const gn=goalNeed(ws);if(gn>V)warn.push({k:'goalshort',need:gn,have:V})}
-  const GC=compileGoals(ws,{sites,people,days,cats,roles,sIx,pIx,dayWk,nWk,vInj,vOptA,injG,capOf,warn,plannableIds:new Set(plannable(ws).map(s=>s.id))});
+  const GC=compileGoals(ws,{sites,people,days,cats,roles,sIx,pIx,dayWk,nWk,vInj,vInjS,vDay,vOptA,injG,capOf,warn,pAvail,need,seatsPerRole,R,C,cIx,plannableIds:new Set(plannable(ws).map(s=>s.id))});
   if(gate&&N){
     const bad=[];sites.forEach((s,si)=>{const cr=sCrit[si];if(!cr)return;const ci=sCat[si];let best=-1;for(let p=0;p<N;p++)best=Math.max(best,pRankC[p*C+ci]);if(best<cr-ws.rules.rankTol)bad.push(s.name)});
     if(bad.length)warn.push({k:'rankgap',n:bad.length,ex:bad.slice(0,3).join(', ')});
@@ -767,7 +788,7 @@ function compile(ws){
   }
   const P={D,V,S,N,R,C,Z,vDay,vLock,vSeat0,vSeatN,seatVisit,seatRole,seatIdx,seatLock,
     sCat,sKm:sites.map(s=>+s.km||0),sZone,sExp,sMin,sMax,sAvail,need,catTarget,mixOn,
-    gMin,gMax,sCrit,pRankC,goals:GC.goals,vSet:GC.vSet,vsets:GC.vsets,vOpt:vOptA,vReq:GC.vReq,reqs:GC.reqs,vGrp:GC.vGrp,
+    gMin,gMax,sCrit,pRankC,goals:GC.goals,vSet:GC.vSet,vsets:GC.vsets,vOpt:vOptA,vReq:GC.vReq,reqs:GC.reqs,vGrp:GC.vGrp,grps:GC.grps,
     pAvail,pHome:people.map(p=>+p.home||0),pPref:people.map(p=>p.pref==='near'?1:p.pref==='far'?2:0),pTarget,
     pMaxLoad:people.map(p=>p.maxLoad===''?-1:+p.maxLoad),pMaxWeek:people.map(p=>p.maxWeek===''?-1:+p.maxWeek),pIdeal,rel,aff,
     dayNum:dayNumA,dayWeek,dayFocus,roleMembers,w,pRun,pOff,sDist:Array.from(sDist),pSiteD:Array.from(pSiteD),
@@ -783,7 +804,7 @@ function compile(ws){
 function compileGoals(ws,X){
   const {sites,people,days,sIx,pIx,dayWk,nWk,vInj,vOptA,injG,capOf,warn}=X;
   const S=sites.length,N=people.length,D=days.length,V=vInj.length;
-  const out={goals:[],vSet:new Array(V).fill(-1),vsets:[],vReq:new Array(V).fill(-1),reqs:[],vGrp:new Array(V).fill(-1)};
+  const out={goals:[],vSet:new Array(V).fill(-1),vsets:[],vReq:new Array(V).fill(-1),reqs:[],vGrp:new Array(V).fill(-1),grps:[]};
   if(!S||!D)return out;
   const PER={each:0,total:1,person:2};
   const mkWho=g=>{const all=g.who.k==='all';const pm=people.map(p=>all||whoMatch(p,g.who)?1:0);return {all,pm,n:pm.filter(Boolean).length}};
@@ -791,17 +812,29 @@ function compileGoals(ws,X){
     if(!g.on)return;
     const b=goalBounds(g),wf=g.w/50;
     if(g.kind==='inject'){
-      const sm=sites.map(s=>whatMatch(s,g.what)?1:0);
+      const ij=g.inject,each=ij.per==='each';
+      const tgt=each?injPlaces(ws,g,sites).map(s=>sIx[s.id]).filter(x=>x!==undefined):null;
+      const sm=each?sites.map((s,si)=>tgt.includes(si)?1:0):sites.map(s=>whatMatch(s,g.what)?1:0);
       const vs=out.vsets.length;out.vsets.push(sm);
+      const one={};
       const who=mkWho(g);
       let rq=-1;
-      if(!who.all){if(!who.n){warn.push({k:'goalnop',g:g.id});}else{rq=out.reqs.length;out.reqs.push({pm:who.pm,need:g.mode==='together'?Math.min(g.k,who.n):1,hard:g.hard?1:0,wf,gid:g.id})}}
+      if(!who.all){if(!who.n){warn.push({k:'goalnop',g:g.id});}else{
+        const md=g.mode;const need=md==='together'?Math.min(g.k,who.n):(md==='all'||md==='exact')?who.n:md==='only'?1:1;
+        rq=out.reqs.length;out.reqs.push({pm:who.pm,need,only:md==='only'||md==='exact'?1:0,hard:g.hard?1:0,wf,gid:g.id});
+        if(md==='all'||md==='exact'){const vv=[];for(let v=0;v<V;v++)if(vInj[v]===g.id)vv.push(v);if(vv.length){const p0=people.filter((p,pi)=>who.pm[pi]);const busy=p0.filter((p,pi)=>{const ix=people.indexOf(p);return vv.some(v=>!X.pAvail[ix*D+X.vDay[v]])});if(busy.length)warn.push({k:'injbusy',g:g.id,n:busy.length})}}
+      }}
       const grp=gi;let nv=0;
-      for(let v=0;v<V;v++)if(vInj[v]===g.id){out.vSet[v]=vs;out.vReq[v]=rq;out.vGrp[v]=grp;nv++}
+      for(let v=0;v<V;v++)if(vInj[v]===g.id){
+        const fs=X.vInjS?X.vInjS[v]:-1;
+        if(fs>=0){if(one[fs]==null){one[fs]=out.vsets.length;out.vsets.push(sites.map((s,si)=>si===fs?1:0))}out.vSet[v]=one[fs]}else out.vSet[v]=vs;
+        out.vReq[v]=rq;out.vGrp[v]=grp;nv++}
       if(!sm.some(Boolean))warn.push({k:'goalnone',g:g.id});
       if(!nv)warn.push({k:'injout',g:g.id});
-      if(g.inject.mode==='pick'&&nv){
-        out.goals.push({gid:g.id,sm,dm:days.map(()=>1),per:1,nw:1,U:1,B:1,ex:[1],places:0,who:0,pm:who.pm,mode:0,k:1,lo:g.inject.n,hi:g.inject.n,hard:g.hard?1:0,wf:Math.max(wf,1),vg:grp});
+      if(ij.mode==='pick'&&nv){
+        const ib=injBounds(ij);
+        if(each)out.goals.push({gid:g.id,sm,dm:days.map(()=>1),per:0,nw:1,U:S,B:S,ex:sm.slice(),places:0,who:0,pm:who.pm,mode:0,k:1,lo:ib.lo,hi:ib.hi,hard:g.hard?1:0,wf:Math.max(wf,1),vg:grp});
+        else out.goals.push({gid:g.id,sm,dm:days.map(()=>1),per:1,nw:1,U:1,B:1,ex:[1],places:0,who:0,pm:who.pm,mode:0,k:1,lo:ib.lo,hi:ib.hi,hard:g.hard?1:0,wf:Math.max(wf,1),vg:grp});
       }
       return;
     }

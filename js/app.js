@@ -34,7 +34,7 @@ function saveNow(){
 function saveSoon(){clearTimeout(saveT);saveT=setTimeout(saveNow,350)}
 
 function isEditing(){const a=document.activeElement;return a&&a.closest&&a.closest('#main')&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)&&a.type!=='range'&&a.type!=='search'}
-function renderSoft(){if(isEditing()){pendingRender=true;refreshChrome()}else render()}
+function renderSoft(){if(isEditing()||(pop&&(ddState||dpkState))){pendingRender=true;refreshChrome()}else render()}
 function refreshChrome(){
   I.setTerms(APP.ws.terms);
   $('#mastRight').innerHTML=V.mast();
@@ -154,7 +154,7 @@ function reroll(){
   solve({});
 }
 
-function closePop(){if(pop){pop.remove();pop=null}$$('.dpk-trigger.open,.dd.open').forEach(b=>b.classList.remove('open'));dpkState=null;colorTarget=null;ddState=null}
+function closePop(){const had=!!(pop&&(ddState||dpkState));if(pop){pop.remove();pop=null}$$('.dpk-trigger.open,.dd.open').forEach(b=>b.classList.remove('open'));dpkState=null;colorTarget=null;ddState=null;if(had&&pendingRender)setTimeout(()=>{if(pendingRender&&!pop&&!isEditing())render()},0)}
 let ddState=null;
 function openDD(btn){
   const id=btn.dataset.dd;
@@ -162,7 +162,7 @@ function openDD(btn){
   const st=V.DD.get(id);if(!st)return;
   openPop(btn,V.ddPop(id,''),'ddpop');
   pop.style.minWidth=Math.max(btn.offsetWidth,180)+'px';place(pop,btn);
-  ddState={id,btn,sel:-1};btn.classList.add('open');
+  ddState={id,btn,sel:-1,st,bind:btn.dataset.bind,ds:Object.assign({},btn.dataset)};btn.classList.add('open');
   const q=pop.querySelector('#ddQ');
   if(q){q.focus();q.addEventListener('input',()=>{pop.querySelector('.ddlist').outerHTML=V.ddPop(id,q.value).replace(/^[\s\S]*?(<div class="ddlist")/,'$1');ddState.sel=-1});
     q.addEventListener('keydown',ddKeys)}
@@ -176,21 +176,26 @@ function ddKeys(e){
   else if(e.key==='Enter'&&e.target.id==='ddQ'){e.preventDefault();opts[0].click()}
 }
 function ddPick(i){
-  const s=ddState;if(!s)return;const st=V.DD.get(s.id);if(!st)return;
-  const opt=st.opts[i];const btn=s.btn;closePop();if(!opt)return;
-  applyBind(btn.dataset.bind,btn.dataset,String(opt[0]));
+  const s=ddState;if(!s)return;const st=V.DD.get(s.id)||s.st;if(!st)return;
+  const opt=st.opts[i];const bind=s.bind,ds=s.ds;closePop();if(!opt)return;
+  applyBind(bind,ds,String(opt[0]));
 }
 function openPop(anchor,html,cls){
   closePop();
   pop=document.createElement('div');pop.className=cls||'pop';pop.innerHTML=html;document.body.appendChild(pop);
   pop._anchor=anchor;place(pop,anchor);return pop;
 }
+function topEdge(){const tb=$('.tabbar');if(!tb)return 0;const r=tb.getBoundingClientRect();return r.bottom>0?r.bottom-6:0}
 function place(el,anchor){
-  const r=anchor.getBoundingClientRect(),w=el.offsetWidth,h=el.offsetHeight,vw=innerWidth,vh=innerHeight;
-  let top=r.bottom+6;if(top+h>vh-8)top=Math.max(8,r.top-h-6);
-  let left=document.documentElement.dir==='rtl'?r.right-w:r.left;left=clamp(left,8,vw-w-8);
+  const r=anchor.getBoundingClientRect(),vw=innerWidth,vh=innerHeight;
+  const lst=el.querySelector('.ddlist');
+  if(lst){lst.style.maxHeight='';const below=vh-r.bottom-14,above=r.top-topEdge()-14,extra=el.offsetHeight-lst.offsetHeight;const room=Math.max(below,above)-extra;if(lst.scrollHeight>room)lst.style.maxHeight=Math.max(120,Math.min(300,room))+'px'}
+  const w=el.offsetWidth,h=el.offsetHeight;
+  let top=r.bottom+6;if(top+h>vh-8){const up=r.top-h-6;top=up>=topEdge()?up:Math.max(8,Math.min(top,vh-h-8))}
+  let left=document.documentElement.dir==='rtl'?r.right-w:r.left;left=clamp(left,8,Math.max(8,vw-w-8));
   el.style.top=top+'px';el.style.left=left+'px';
 }
+function anchorGone(a){if(!a||!a.isConnected)return true;const r=a.getBoundingClientRect();if(!r.width&&!r.height)return true;return r.bottom<topEdge()||r.top>innerHeight}
 function openModal(html,cls){
   closeModal();
   modal=document.createElement('div');modal.className='overlay'+(cls?' '+cls:'');modal.innerHTML=html;
@@ -576,7 +581,7 @@ function applyBind(bd,ds,v){
     case 'unit':commit(ws=>{ws.unit=v==='mi'?'mi':'km'},{solve:false});break;
     case 'expWho':expState.who=v;refreshExport();break;
     case 'siteLoc':APP.f.siteLoc=v;APP.f.sitePage=0;render();break;
-    case 'goal':commit(ws=>{const g=byId(ws.goals,ds.id);if(!g)return;g[ds.f]=v;if(ds.f==='per'&&v==='person'&&g.who.k==='all')g.who={k:'role',v:[]};if(ds.f==='kind'&&v==='inject'&&g.what.k==='all')g.what={k:'site',v:[]};Object.assign(g,M.normGoal(g))});break;
+    case 'goal':commit(ws=>{const g=byId(ws.goals,ds.id);if(!g)return;const IJ={iper:'per',iop:'op',iadd:'add'};if(IJ[ds.f]){g.inject[IJ[ds.f]]=v;Object.assign(g,M.normGoal(g));return}g[ds.f]=v;if(ds.f==='per'&&v==='person'&&g.who.k==='all')g.who={k:'role',v:[]};if(ds.f==='kind'&&v==='inject'&&g.what.k==='all')g.what={k:'site',v:[]};Object.assign(g,M.normGoal(g))});break;
     case 'goalM':commit(ws=>{const g=byId(ws.goals,ds.id);if(!g)return;const side=ds.side;let m=g[side];if(ds.mi!=null&&m.more)m=m.more[+ds.mi];
       if(ds.f==='k'){m.k=v;m.v=GOAL_DEF[v]!=null?GOAL_DEF[v]:(M.MULTI_K.includes(v)||v==='gender'?[]:'');if(v==='gender')m.v=['f'];if(v==='all'){m.not=false;if(m===g[side]){delete m.more;delete m.join}}}
       else m.v=String(v);Object.assign(g,M.normGoal(g))});break;
@@ -769,7 +774,7 @@ const act={
   goalDel(b){armOr(b,'gd'+b.dataset.id,()=>commit(ws=>{ws.goals=ws.goals.filter(g=>g.id!==b.dataset.id)}))},
   goalOn(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(g)g.on=!g.on})},
   goalN(b){const k=b.dataset.k||'n';commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(!g)return;const d=+b.dataset.d;
-    if(k==='injN')g.inject.n=clamp(g.inject.n+d,1,50);else if(k==='k')g.k=clamp(g.k+d,1,20);else if(k==='n2')g.n2=clamp(g.n2+d,g.n,9999);else{g.n=clamp(g.n+d,0,9999);if(g.n2<g.n)g.n2=g.n}},{co:'gn'+k+b.dataset.id})},
+    if(k==='injN'){g.inject.n=clamp(g.inject.n+d,g.inject.op==='max'?0:1,50);if(g.inject.n2<g.inject.n)g.inject.n2=g.inject.n}else if(k==='injN2')g.inject.n2=clamp(g.inject.n2+d,g.inject.n,60);else if(k==='k')g.k=clamp(g.k+d,1,20);else if(k==='n2')g.n2=clamp(g.n2+d,g.n,9999);else{g.n=clamp(g.n+d,0,9999);if(g.n2<g.n)g.n2=g.n}},{co:'gn'+k+b.dataset.id})},
   goalHard(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(g)g.hard=!g.hard})},
   goalDup(b){commit(ws=>{const i=ws.goals.findIndex(g=>g.id===b.dataset.id);if(i<0)return;const c=M.normGoal(Object.assign(clone(ws.goals[i]),{id:''}));ws.goals.splice(i+1,0,c)})},
   goalNot(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(!g)return;let m=g[b.dataset.side];if(b.dataset.mi!=null&&m.more)m=m.more[+b.dataset.mi];if(m&&m.k!=='all')m.not=!m.not})},
@@ -972,7 +977,7 @@ document.addEventListener('keydown',e=>{
 });
 window.addEventListener('resize',()=>{if(pop&&pop._anchor&&pop._anchor.isConnected)place(pop,pop._anchor);else closePop()});
 window.addEventListener('hashchange',()=>{const hv=location.hash.slice(1);if(VIEWFN[hv]&&hv!==APP.view){APP.view=hv;closePop();render()}});
-window.addEventListener('scroll',()=>{if(pop&&pop._anchor&&pop._anchor.isConnected)place(pop,pop._anchor)},{passive:true});
+window.addEventListener('scroll',e=>{if(!pop)return;if(e.target&&e.target.nodeType===1&&pop.contains(e.target))return;if(anchorGone(pop._anchor)){const ae=document.activeElement;closePop();if(ae&&ae.id==='ddQ')ae.blur();return}place(pop,pop._anchor)},{passive:true,capture:true});
 window.addEventListener('beforeunload',()=>{if(saveT)saveNow()});
 
 async function loadConfig(){
