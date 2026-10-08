@@ -68,7 +68,8 @@ function derive(){
   (m.goalOf||[]).forEach((gid,qi)=>{const x=gr[qi],g=byId(ws.goals,gid);if(!x||!g||g.kind==='inject')return;
     const single=x.n===1&&g.per==='total'&&g.period!=='week';
     goalIx[gid]={met:x.met===x.n,txt:single?x.sum+' / '+(g.op==='between'?g.n+'–'+g.n2:g.op==='max'?(g.n===0?t('gNone'):'≤ '+g.n):g.n):x.met+'/'+x.n,tip:t('gProgTip',{met:x.met,n:x.n,s:x.short,o:x.over})}});
-  (ws.goals||[]).forEach(g=>{if(!g.on||g.kind!=='inject'||goalIx[g.id])return;let n=0,bad=0;m.visits.forEach((v,vi)=>{if(v.inj!==g.id||r.siteOf[vi]<0)return;n++;if((r.issues||[]).some(x=>x.v===vi&&(x.k==='injwho'||x.k==='injset')))bad++});const want=g.inject.mode==='pick'?g.inject.n:m.visits.filter(v=>v.inj===g.id).length;goalIx[g.id]={met:!bad&&n>0&&n===want,txt:n+' / '+want+'×'}});
+  (ws.goals||[]).forEach(g=>{if(!g.on||g.kind!=='inject'||goalIx[g.id])return;let n=0,bad=0;m.visits.forEach((v,vi)=>{if(v.inj!==g.id||r.siteOf[vi]<0)return;n++;if((r.issues||[]).some(x=>x.v===vi&&(x.k==='injwho'||x.k==='injset')))bad++});const ij=g.inject,mult=ij.per==='each'?M.injPlaces(ws,g).length:1;let lo,hi;if(ij.mode==='pick'){const b=M.injBounds(ij);lo=b.lo*mult;hi=b.hi<0?-1:b.hi*mult}else{lo=hi=m.visits.filter(v=>v.inj===g.id).length}
+    const wt=hi<0?'≥ '+lo:lo===hi?String(lo):lo+'–'+hi;goalIx[g.id]={met:!bad&&n>=lo&&(hi<0||n<=hi)&&(n>0||hi===0),txt:n+' / '+wt+'×'}});
   const D={m,r,siteOfV,personOfZ,byDay,pd,flagged,dayIss,iss,loads,targets,uses,goalIx,_ws:ws.updated};
   Object.defineProperty(pl,'derived',{value:D,enumerable:false,configurable:true,writable:true});
   return D;
@@ -237,7 +238,8 @@ function goalText(g){
   const wl=whenLabel(g.when),who=goalWho(g);
   if(g.kind==='inject'){
     const when=g.inject.mode==='dates'?(g.inject.dates||'—'):(wl||t('gw_all'));
-    return t('gt_inject',{n:g.inject.n,what:goalWhat(g),when})+(who?' · '+t('g_with')+' '+who:'');
+    const ij=g.inject,nn=ij.mode==='pick'&&ij.op!=='exact'?(ij.op==='between'?ij.n+'–'+ij.n2:t('op_'+ij.op)+' '+ij.n):ij.n;
+    return t('gt_inject',{n:nn,what:goalWhat(g),when})+(ij.per==='each'?' · '+t('gi_perEach'):'')+(ij.add==='replace'?' · '+t('gi_replace'):'')+(who?' · '+(g.mode==='any'?t('g_with'):t('gm_'+g.mode).replace('…',g.k))+' '+who:'')+(g.hard?' 🔒':'');
   }
   const b=g.op==='between'?g.n+'–'+g.n2:g.n;
   const head=g.per==='each'?t('gt_each',{what:goalWhat(g)}):g.per==='person'?t('gt_person',{who:who||t('bw_all'),what:goalWhat(g)}):t('gt_total',{what:goalWhat(g)});

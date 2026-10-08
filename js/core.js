@@ -821,7 +821,8 @@ function compileGoals(ws,X){
       let rq=-1;
       if(!who.all){if(!who.n){warn.push({k:'goalnop',g:g.id});}else{
         const md=g.mode;const need=md==='together'?Math.min(g.k,who.n):(md==='all'||md==='exact')?who.n:md==='only'?1:1;
-        rq=out.reqs.length;out.reqs.push({pm:who.pm,need,only:md==='only'||md==='exact'?1:0,hard:g.hard?1:0,wf,gid:g.id});
+        const rok=X.roles.map(r=>people.some((p,pi)=>who.pm[pi]&&p.roles.includes(r.id))?1:0);
+        rq=out.reqs.length;out.reqs.push({pm:who.pm,need,only:md==='exact'?2:md==='only'?1:0,rok,hard:g.hard?1:0,wf,gid:g.id});
         if(md==='all'||md==='exact'){const vv=[];for(let v=0;v<V;v++)if(vInj[v]===g.id)vv.push(v);if(vv.length){const p0=people.filter((p,pi)=>who.pm[pi]);const busy=p0.filter((p,pi)=>{const ix=people.indexOf(p);return vv.some(v=>!X.pAvail[ix*D+X.vDay[v]])});if(busy.length)warn.push({k:'injbusy',g:g.id,n:busy.length})}}
       }}
       const grp=gi;let nv=0;
@@ -1057,5 +1058,5 @@ G.MV={$,$$,esc,uid,clamp,sum,avg,num,intOr,byId,clone,fnv,gini,mulberry32,
   Store,rangeOf,dayCfg,planDays,planTotal,plannable,goalSites,goalNeed,fpOf,fpWithLocks,compile,csvParse,csvRow,
   SENSES,WHO_K,WHAT_K,RELS,TEAM_OPS,COUNT_OPS,FLIP,isHard,normRule,mkRule,whoMatch,whatMatch,resolveBook,resolveGoals,parseDates,overlayList,bookForExport,toDataset,mergeDataset,locDist,arr7,
   RC_MODES,defaultRecency,normRecency,rcWindow,parseAnyDate,parseHistoryRows,historyAoa,mergeHistory,relinkHistory,histFromPlan,recencyBoard,hnorm,
-  normGoal,goalBounds,goalPeople,goalsForExport,injectCount,whenMatch,normWhen,MULTI_K,G_PER,G_OP,G_MODE,weeksIn};
+  normGoal,goalBounds,goalPeople,goalsForExport,injectCount,injPlaces,injBounds,whenMatch,normWhen,MULTI_K,G_PER,G_OP,G_MODE,weeksIn};
 })(window);

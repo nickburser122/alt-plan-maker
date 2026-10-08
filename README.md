@@ -47,6 +47,7 @@ Examples: *Abaza ≥ 3 visits to Contracted* · *Abaza + Amani together ≥ 2* (
 - **How many** (solver-picks mode): `inject.op: exact|min|max|between` with `n`, `n2`.
 - **Extra or instead**: `inject.add: extra` (on top of the rhythm) or `replace` (takes the place of rhythm visits, so the plan total stays the same).
 - `tests/inject-test.html` checks these (6 checks).
+- **Solver**: a team-repair move (4% of annealing moves) puts a required person on an injected visit, or swaps out someone from outside the group when the mode is exact or only. With *exactly these people*, the leftover seats stay empty and are not counted as open. With *only from group*, the same applies only to roles the group has no one in.
 
 ### Fixes in this version
 - A dropdown no longer goes blank or stops responding when a background solve redraws the page while it is open. The redraw waits until the dropdown closes.

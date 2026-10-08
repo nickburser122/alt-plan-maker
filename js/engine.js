@@ -95,6 +95,8 @@ function Solver(P){
     vSites[v]=a;
   }
   const freeNorm=freeVisits.filter(v=>vSet[v]<0);
+  const openOk=(v,z)=>{const q=vReq[v];if(q<0)return false;const rq=reqs[q];return rq.only===2||(rq.only===1&&rq.rok&&!rq.rok[seatRole[z]])};
+  const reqV=[];for(let v=0;v<V;v++)if(vReq[v]>=0)reqV.push(v);
   /* ---- goal counters: bucket = unit × week; unit = place | all | person ---- */
   const gCnt=GQ.map(q=>new Float64Array(q.B)),gPc=GQ.map(q=>q.places?new Int32Array(q.B*S):null),gBc=GQ.map(q=>new Float64Array(q.B)),gSt=GQ.map(q=>new Int32Array(q.B));
   const vC=new Array(V).fill(null);let gtot=0,gEp=1;const gUndo=[],gDirty=[];const EMPTY=[];
@@ -299,7 +301,7 @@ function Solver(P){
     for(let z=z0;z<z1;z++){
       if(!seatAct[z])continue;
       const p=seatP[z];
-      if(p<0){if(seatLock[z]!==-1&&!(vReq[v]>=0&&reqs[vReq[v]].only)){c+=OPENW;if(bd)bd.coverage+=OPENW}}
+      if(p<0){if(seatLock[z]!==-1&&!openOk(v,z)){c+=OPENW;if(bd)bd.coverage+=OPENW}}
       else vbuf[k++]=p;
     }
     if(vReq[v]>=0){const rq=reqs[vReq[v]];let m=0;for(let i=0;i<k;i++)if(rq.pm[vbuf[i]])m++;
@@ -526,6 +528,13 @@ function Solver(P){
       }
     }
   }
+  function mvReq(){
+    const v=reqV[(rnd()*reqV.length)|0];if(siteOf[v]<0)return;
+    const rq=reqs[vReq[v]],d=vDay[v],z0=vSeat0[v],z1=z0+vSeatN[v];let m=0,out=-1,bad=-1;
+    for(let z=z0;z<z1;z++){if(!seatAct[z]||seatLock[z]!==-2)continue;const p=seatP[z];if(p>=0&&rq.pm[p])m++;else{if(p>=0)out=z;if(bad<0||rnd()<.5)bad=z}}
+    if(m<rq.need&&bad>=0){const cs=cand[seatRole[bad]*D+d];const ok=[];for(const c of cs)if(rq.pm[c]&&!inVisit(v,c))ok.push(c);if(ok.length){let c=ok[(rnd()*ok.length)|0];if(rnd()<.6){const c2=ok[(rnd()*ok.length)|0];if(!pDay[c2*D+d])c=c2}opSeat(bad,c);return}}
+    if(rq.only&&out>=0){const cs=cand[seatRole[out]*D+d];const ok=[];for(const c of cs)if(rq.pm[c]&&!inVisit(v,c))ok.push(c);opSeat(out,ok.length?ok[(rnd()*ok.length)|0]:-1)}
+  }
   function mvSiteSwap(){
     if(freeNorm.length<2)return;
     const v1=freeNorm[(rnd()*freeNorm.length)|0],v2=freeNorm[(rnd()*freeNorm.length)|0];
@@ -602,6 +611,7 @@ function Solver(P){
       const T=T0*Math.exp(ratio*i/iters);
       const r=rnd();
       if(NQ&&r<.1)attempt(mvGoal,T);
+      else if(reqV.length&&r>=.1&&r<.14)attempt(mvReq,T);
       else if(r<.44)attempt(mvReassign,T);
       else if(r<.72)attempt(mvSwap,T);
       else if(r<.9)attempt(mvRelocate,T);
@@ -628,7 +638,7 @@ function Solver(P){
       if(vSet[v]>=0&&!vsets[vSet[v]][s])out.push({k:'injset',sev:'warn',v,s});
       if(!sAvail[s*D+vDay[v]])out.push({k:'siteoff',sev:'warn',v,s});
       const z0=vSeat0[v],z1=z0+vSeatN[v],open=new Array(R).fill(0),ps=[];
-      for(let z=z0;z<z1;z++){if(!seatAct[z])continue;const p=seatP[z];if(p<0){if(seatLock[z]!==-1&&!(vReq[v]>=0&&reqs[vReq[v]].only))open[seatRole[z]]++}else ps.push(p)}
+      for(let z=z0;z<z1;z++){if(!seatAct[z])continue;const p=seatP[z];if(p<0){if(seatLock[z]!==-1&&!openOk(v,z))open[seatRole[z]]++}else ps.push(p)}
       for(let r=0;r<R;r++)if(open[r])out.push({k:'open',sev:'error',v,r,n:open[r]});
       for(let i=0;i<ps.length;i++)for(let j=i+1;j<ps.length;j++)if(rel[ps[i]*N+ps[j]]===1)out.push({k:'avoid',sev:'info',v,p:ps[i],q:ps[j]});
     }
