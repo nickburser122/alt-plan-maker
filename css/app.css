@@ -496,9 +496,27 @@ kbd{border:1px solid var(--hairline-strong);background:var(--bg-raised);border-r
 .szdays{grid-column:1/-1;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .sznum .inp{width:80px}
 .goals{display:flex;flex-direction:column;gap:8px}
-.goal{display:flex;align-items:center;gap:12px;padding:9px 10px 9px 12px;border:1px solid var(--hairline);border-radius:14px;background:var(--bg-raised);flex-wrap:wrap;transition:opacity .15s}
+.goal{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:start;padding:10px 12px;border:1px solid var(--hairline);border-radius:14px;background:var(--bg-raised);border-inline-start:3px solid var(--accent-soft);transition:opacity .15s}
+.goal.hard{border-inline-start-color:var(--accent)}
+.goal.inj{border-inline-start-color:var(--good)}
 .goal.off{opacity:.55}
-.gsent{display:flex;align-items:center;gap:7px;flex-wrap:wrap;flex:1;min-width:280px}
+.goal.flash{animation:flash 1.2s var(--ease)}
+.goal>.sw{margin-top:6px}
+.gmain{display:flex;flex-direction:column;gap:8px;min-width:0}
+.gsent{display:flex;flex-direction:column;gap:6px;min-width:0}
+.gline{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.gline.sub{padding-inline-start:10px;border-inline-start:2px dotted var(--hairline-strong)}
+.vchips{display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap}
+.vchip{display:inline-flex;align-items:center;gap:3px;font-size:12.5px;font-weight:600;padding:3px 4px 3px 9px;border-radius:999px;background:var(--wash-selected);color:var(--primary)}
+.vchip button{border:0;background:transparent;color:inherit;cursor:pointer;display:grid;place-items:center;padding:1px;border-radius:50%}
+.vchip button:hover{background:var(--bg-raised)}
+.vchip .ic{width:11px;height:11px}
+.vor{font:600 10px var(--f-mono);text-transform:uppercase;color:var(--ink-400)}
+.dd.bdd.plus{padding:4px 8px}
+.addgoal .dd.btn{font-weight:600}
+.injrow td{background:color-mix(in srgb,var(--good) 6%,transparent)}
+.okc{color:var(--good)}.badc{color:var(--bad)}
+@media (max-width:640px){.goal{grid-template-columns:auto minmax(0,1fr)}.goal .bacts{grid-column:1/-1;justify-content:flex-end}.gline.sub{padding-inline-start:6px}}
 .gw{font-size:13.5px;color:var(--ink-500)}
 .gmeta{color:var(--ink-400)}
 .gprog{display:inline-flex;align-items:center;gap:5px;font:600 11px var(--f-mono);padding:3px 9px;border-radius:999px}

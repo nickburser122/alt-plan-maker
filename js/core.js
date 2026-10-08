@@ -69,7 +69,6 @@ function mkCat(name,color,staff,share,planned){return {id:uid('c'),name,color,st
 function mkLoc(name,km,o){return Object.assign({id:uid('l'),name,km:km||0},o||{})}
 function mkSite(name,cat,km,o){return Object.assign({id:uid('s'),name,cat,km:km||0,loc:'',crit:50,tag:'',zone:'',weight:1,minV:'',maxV:'',gapMin:'',gapMax:'',days:[true,true,true,true,true,true,true],blackout:[],active:true,note:''},o||{})}
 function mkPerson(name,roles,o){return Object.assign({id:uid('p'),name,roles:roles||[],home:0,homeLoc:'',rank:50,rankBy:{},gender:'',pref:'none',weight:1,days:[true,true,true,true,true,true,true],off:[],maxLoad:'',maxWeek:'',runMax:'',offMin:'',avoid:[],pair:[],likes:[],bans:[],active:true},o||{})}
-function mkGoal(o){return Object.assign({id:uid('g'),on:true,per:'each',scope:'all',ref:'',op:'min',n:1},o||{})}
 
 const SENSES=['prefer','avoid','only','never'];
 const WHO_K=['all','person','role','gender','rankGe','rankLe','homeLoc'];
@@ -78,7 +77,9 @@ const RELS=['site','day','with','team','count'];
 const TEAM_OPS=['min','max','exact','ifany'],COUNT_OPS=['min','max','exact'];
 const FLIP={prefer:'avoid',avoid:'prefer',only:'never',never:'only'};
 const isHard=r=>r.sense==='only'||r.sense==='never';
-function normC(m,ks){m=m||{};const k=ks.includes(m.k)?m.k:'all';return {k,v:m.v==null?'':String(m.v),not:!!m.not&&k!=='all'}}
+const MULTI_K=['person','role','homeLoc','site','cat','loc','tag'];
+function normV(v){if(Array.isArray(v))return Array.from(new Set(v.map(x=>String(x==null?'':x)).filter(Boolean)));return v==null?'':String(v)}
+function normC(m,ks){m=m||{};const k=ks.includes(m.k)?m.k:'all';return {k,v:k==='all'?'':normV(m.v),not:!!m.not&&k!=='all'}}
 function normM(m,ks){const x=normC(m,ks);const more=(Array.isArray(m&&m.more)?m.more:[]).slice(0,3).map(c=>normC(c,ks)).filter(c=>c.k!=='all');if(more.length){x.more=more;x.join=m.join==='or'?'or':'and'}return x}
 function parseDates(s){const out=new Set();String(s||'').split(/[\s,;]+/).forEach(tk=>{const m=tk.split('..');if(m.length===2&&validISO(m[0])&&validISO(m[1])){for(let d=m[0];d<=m[1]&&out.size<800;d=addISO(d,1))out.add(d)}else if(validISO(tk))out.add(tk)});return out}
 function normRule(r){
@@ -94,27 +95,29 @@ function normRule(r){
     op:ops.includes(r.op)?r.op:'max',n:clamp(intOr(r.n,1),0,rel==='count'?99:20),per:r.per==='week'?'week':'plan',w:clamp(num(r.w,50),0,100),note:String(r.note||'').slice(0,160)};
 }
 function mkRule(o){return normRule(Object.assign({on:true,rel:'site',sense:'avoid',who:{k:'all',v:''},what:{k:'all',v:''},op:'max',n:1,w:50},o||{}))}
+const inV=(m,x)=>Array.isArray(m.v)?m.v.includes(x):x===m.v;
+const numV=m=>+(Array.isArray(m.v)?m.v[0]:m.v)||0;
 function whoRaw(p,m){
   switch(m.k){
-    case 'person':return p.id===m.v;
-    case 'role':return p.roles.includes(m.v);
-    case 'gender':return (p.gender||'')===m.v;
-    case 'rankGe':return (+p.rank||0)>=(+m.v||0);
-    case 'rankLe':return (+p.rank||0)<=(+m.v||0);
-    case 'homeLoc':return (p.homeLoc||'')===m.v;
+    case 'person':return inV(m,p.id);
+    case 'role':return Array.isArray(m.v)?m.v.some(r=>p.roles.includes(r)):p.roles.includes(m.v);
+    case 'gender':return inV(m,p.gender||'');
+    case 'rankGe':return (+p.rank||0)>=numV(m);
+    case 'rankLe':return (+p.rank||0)<=numV(m);
+    case 'homeLoc':return inV(m,p.homeLoc||'');
   }
   return true;
 }
 function whatRaw(s,m){
   switch(m.k){
-    case 'site':return s.id===m.v;
-    case 'cat':return s.cat===m.v;
-    case 'loc':return s.loc===m.v;
-    case 'tag':return (s.tag||'')===m.v;
-    case 'critGe':return (+s.crit||0)>=(+m.v||0);
-    case 'critLe':return (+s.crit||0)<=(+m.v||0);
-    case 'kmGe':return (+s.km||0)>=(+m.v||0);
-    case 'kmLe':return (+s.km||0)<=(+m.v||0);
+    case 'site':return inV(m,s.id);
+    case 'cat':return inV(m,s.cat);
+    case 'loc':return inV(m,s.loc);
+    case 'tag':return inV(m,s.tag||'');
+    case 'critGe':return (+s.crit||0)>=numV(m);
+    case 'critLe':return (+s.crit||0)<=numV(m);
+    case 'kmGe':return (+s.km||0)>=numV(m);
+    case 'kmLe':return (+s.km||0)<=numV(m);
   }
   return true;
 }
@@ -139,18 +142,38 @@ function resolveBook(ws,list){
   const R=refResolver(ws);
   return (Array.isArray(list)?list:[]).map(r=>{
     const x=normRule(r);
-    const rs=m=>{m.v=R(m.k,m.v);(m.more||[]).forEach(c=>c.v=R(c.k,c.v))};
+    const rv=c=>{c.v=Array.isArray(c.v)?c.v.map(x=>R(c.k,x)):R(c.k,c.v)};
+    const rs=m=>{rv(m);(m.more||[]).forEach(rv)};
     rs(x.who);
     if(x.rel!=='day')rs(x.what);
     if(!(r&&typeof r.id==='string'&&r.id))x.id=uid('b');
     return x;
   });
 }
-function resolveGoals(ws,list){
-  const R=refResolver(ws);const map={cat:'cat',loc:'loc',site:'site'};
-  return (Array.isArray(list)?list:[]).map(g=>mkGoal(Object.assign({},g,{id:uid('g'),ref:map[g.scope]?R(map[g.scope],g.ref):String(g.ref==null?'':g.ref)})));
+/* ======== Goals: count goals (who × what × when × per × period × measure) and visit injection ======== */
+const G_KIND=['count','inject'],G_PER=['each','total','person'],G_OP=['min','max','exact','between'],G_MODE=['any','each','together','none'];
+function legacyWhat(g){switch(g.scope){case 'cat':case 'loc':case 'tag':case 'site':return {k:g.scope,v:g.ref?[String(g.ref)]:[]};case 'crit':return {k:'critGe',v:String(g.ref||75)}}return {k:'all',v:''}}
+function normWhen(w){w=w||{};if(w.k==='dow')return {k:'dow',v:arr7(w.v,false)};if(w.k==='dates')return {k:'dates',v:String(w.v||'').slice(0,600)};return {k:'all',v:''}}
+function whenMatch(w,iso,ds){if(!w||w.k==='all')return true;if(w.k==='dow')return !!w.v[dowOf(iso)];return (ds||parseDates(w.v)).has(iso)}
+function normGoal(g){
+  g=g||{};
+  const what=normM(g.what||legacyWhat(g),WHAT_K);
+  const n=clamp(intOr(g.n,1),0,9999);let n2=clamp(intOr(g.n2,n+1),0,9999);if(n2<n)n2=n;
+  const inj=g.inject||{};
+  return {id:typeof g.id==='string'&&g.id?g.id:uid('g'),on:g.on!==false,kind:G_KIND.includes(g.kind)?g.kind:'count',label:String(g.label||'').slice(0,80),
+    what,who:normM(g.who,WHO_K),mode:G_MODE.includes(g.mode)?g.mode:'any',k:clamp(intOr(g.k,2),1,20),when:normWhen(g.when),
+    per:G_PER.includes(g.per)?g.per:'each',period:g.period==='week'?'week':'plan',measure:g.measure==='places'?'places':'visits',
+    op:G_OP.includes(g.op)?g.op:'min',n,n2,hard:!!g.hard,w:clamp(num(g.w,50),0,100),
+    inject:{mode:inj.mode==='pick'?'pick':'dates',dates:String(inj.dates||'').slice(0,600),n:clamp(intOr(inj.n,1),1,50)}};
 }
-function bookForExport(ws,list){
+function mkGoal(o){return normGoal(Object.assign({on:true,per:'each',op:'min',n:1},o||{}))}
+function goalBounds(g){const lo=g.op==='max'?0:g.n,hi=g.op==='min'?-1:(g.op==='between'?g.n2:g.n);return {lo,hi}}
+function resolveM(R,m){if(!m||typeof m!=='object')return m;const x=JSON.parse(JSON.stringify(m));const f=c=>{c.v=Array.isArray(c.v)?c.v.map(y=>R(c.k,y)):R(c.k,c.v)};f(x);(x.more||[]).forEach(f);return x}
+function resolveGoals(ws,list){
+  const R=refResolver(ws);
+  return (Array.isArray(list)?list:[]).map(g0=>{const g=Object.assign({},g0);if(!g.what&&g.scope)g.what=legacyWhat(g);if(g.what)g.what=resolveM(R,g.what);if(g.who)g.who=resolveM(R,g.who);delete g.id;return normGoal(g)});
+}
+function sideExporter(ws){
   const nm=(arr,id)=>{const x=byId(arr,id);return x?x.name:id};
   const out=(k,v)=>{
     switch(k){
@@ -158,10 +181,20 @@ function bookForExport(ws,list){
       case 'cat':return /^c_/.test(v)?v.slice(2):nm(ws.categories,v);
       case 'loc':case 'homeLoc':return nm(ws.locations||[],v);
       case 'site':return nm(ws.sites,v);
+      case 'person':return nm(ws.people,v);
     }
     return v;
   };
-  const side=(m)=>{const o={k:m.k,v:out(m.k,m.v)};if(m.not)o.not=true;if(m.more&&m.more.length){o.more=m.more.map(side);o.join=m.join}return o};
+  const side=(m)=>{const o={k:m.k,v:Array.isArray(m.v)?m.v.map(x=>out(m.k,x)):out(m.k,m.v)};if(m.not)o.not=true;if(m.more&&m.more.length){o.more=m.more.map(side);o.join=m.join}return o};
+  return side;
+}
+function goalsForExport(ws){
+  const side=sideExporter(ws);
+  return (ws.goals||[]).map(g=>{const o=Object.assign({},g);delete o.id;o.what=side(g.what);o.who=side(g.who);o.when=JSON.parse(JSON.stringify(g.when));o.inject=Object.assign({},g.inject);return o});
+}
+function bookForExport(ws,list){
+  const side0=sideExporter(ws);
+  const side=m=>{const o=side0(m);if(m.k==='person'&&!Array.isArray(m.v))o.v=m.v;return o};
   return (list||ws.book||[]).map(r=>{const o={on:r.on,rel:r.rel,sense:r.sense,who:side(r.who),what:r.rel==='day'?(r.what.k==='dates'?{k:'dates',v:r.what.v}:{k:'dow',v:r.what.v.slice()}):side(r.what),w:r.w};
     if(r.rel==='team'||r.rel==='count'){o.op=r.op;o.n=r.n}if(r.rel==='count')o.per=r.per;if(r.note)o.note=r.note;return o});
 }
@@ -367,7 +400,7 @@ function toDataset(ws){
     history:(ws.history||[]).map(h=>{const s=byId(ws.sites,h.site);const o={date:h.date,place:s?s.name:(h.sn||''),people:h.people.map(id=>(byId(ws.people,id)||{}).name).filter(Boolean).concat(h.pn||[])};if(h.note)o.note=h.note;if(h.src&&h.src!=='upload')o.src=h.src;return o}),
     settings:{rules:ws.rules,weights:ws.weights,useW:ws.useW,engine:{seed:ws.engine.seed,quality:ws.engine.quality,runs:ws.engine.runs},sizing:ws.sizing,unit:ws.unit,week:ws.week,
       recency:(()=>{const r=clone(ws.recency||defaultRecency());const cm={};for(const k in r.cat||{})cm[kindOf(k)]=r.cat[k];r.cat=cm;return r})(),
-      goals:ws.goals.map(g=>({on:g.on,per:g.per,scope:g.scope,ref:g.scope==='cat'?kindOf(g.ref):g.scope==='loc'?ln(g.ref):g.scope==='site'?((byId(ws.sites,g.ref)||{}).name||g.ref):g.ref,op:g.op,n:g.n}))},
+      goals:goalsForExport(ws)},
     rulebook:bookForExport(ws)
   };
 }
@@ -430,7 +463,7 @@ function normalize(o){
     people:(Array.isArray(h.people)?h.people:[]).filter(x=>pIds.has(x)),pn:(Array.isArray(h.pn)?h.pn:[]).map(String).filter(Boolean),note:String(h.note||'').slice(0,200),src:['upload','plan','manual'].includes(h.src)?h.src:'upload'}));
   w.histRev=Math.max(0,intOr(o.histRev,0));
   w.recency=normRecency(o.recency);
-  w.goals=(Array.isArray(o.goals)?o.goals:[]).map(g=>({id:okId(g.id,'g'),on:g.on!==false,per:g.per==='total'?'total':'each',scope:['all','cat','loc','tag','site','crit'].includes(g.scope)?g.scope:'all',ref:String(g.ref||''),op:['min','exact','max'].includes(g.op)?g.op:'min',n:clamp(intOr(g.n,1),0,9999)}));
+  w.goals=(Array.isArray(o.goals)?o.goals:[]).map(g=>{const x=normGoal(g);x.id=okId(g&&g.id,'g');return x});
   const sz=o.sizing||{};w.sizing={mode:['rhythm','total','goals'].includes(sz.mode)?sz.mode:'rhythm',total:clamp(intOr(sz.total,40),0,9999)};
   w.week=normWeek(o.week);
   w.overrides={};if(o.overrides&&typeof o.overrides==='object')for(const k in o.overrides)if(validISO(k))w.overrides[k]=o.overrides[k];
@@ -511,21 +544,17 @@ function dayCfg(ws,iso){
 function plannable(ws){const pc=new Set(ws.categories.filter(c=>c.planned).map(c=>c.id));return ws.sites.filter(s=>s.active&&pc.has(s.cat))}
 function goalSites(ws,g,list){
   list=list||plannable(ws);
-  switch(g.scope){
-    case 'cat':return list.filter(s=>s.cat===g.ref);
-    case 'loc':return list.filter(s=>s.loc===g.ref);
-    case 'tag':return list.filter(s=>(s.tag||'')===g.ref);
-    case 'site':return list.filter(s=>s.id===g.ref);
-    case 'crit':return list.filter(s=>(+s.crit||0)>=(+g.ref||0));
-  }
-  return list;
+  return list.filter(s=>whatMatch(s,g.what));
 }
+function goalPeople(ws,g){return ws.people.filter(p=>p.active&&(g.who.k==='all'||whoMatch(p,g.who)))}
+function weeksIn(ws){const {start,end}=rangeOf(ws);return new Set(daysIn(start,end).map(d=>weekStartOf(d,ws.rules.weekStart))).size||1}
+const simpleGoal=g=>g.on&&g.kind==='count'&&g.measure==='visits'&&g.who.k==='all'&&g.per!=='person';
 function goalNeed(ws){
-  const list=plannable(ws);const minE={};let allT=-1,allCap=Infinity;const tots=[];
-  ws.goals.forEach(g=>{if(!g.on)return;const set=goalSites(ws,g,list);
-    if(g.per==='each'){if(g.op!=='max')set.forEach(s=>minE[s.id]=Math.max(minE[s.id]||0,g.n))}
-    else if(g.scope==='all'){if(g.op!=='max')allT=Math.max(allT,g.n);if(g.op!=='min')allCap=Math.min(allCap,g.n)}
-    else if(g.op!=='max')tots.push({set,n:g.n});
+  const list=plannable(ws);const minE={};let allT=-1,allCap=Infinity;const tots=[];const nW=weeksIn(ws);
+  ws.goals.forEach(g=>{if(!simpleGoal(g))return;const set=goalSites(ws,g,list);const mul=g.period==='week'?nW:1;const b=goalBounds(g);const lo=b.lo*mul,hi=b.hi<0?Infinity:b.hi*mul;
+    if(g.per==='each'){if(lo>0)set.forEach(s=>minE[s.id]=Math.max(minE[s.id]||0,lo))}
+    else if(g.what.k==='all'&&!g.what.more){if(lo>0)allT=Math.max(allT,lo);if(isFinite(hi))allCap=Math.min(allCap,hi)}
+    else if(lo>0)tots.push({set,n:lo});
   });
   let need=0;for(const k in minE)need+=minE[k];
   tots.forEach(x=>{let inside=0;x.set.forEach(s=>inside+=minE[s.id]||0);need+=Math.max(0,x.n-inside)});
@@ -539,15 +568,31 @@ function planTotal(ws,days){
   return sum(days.map(d=>d.cfg.n));
 }
 function planDays(ws,keepZero){
-  const {start,end}=rangeOf(ws);const out=[];
-  for(const iso of daysIn(start,end)){const c=dayCfg(ws,iso);if(c.on&&c.n>0)out.push({iso,cfg:c,n:c.n})}
+  const {start,end}=rangeOf(ws);let out=[];
+  for(const iso of daysIn(start,end)){const c=dayCfg(ws,iso);if(c.on&&c.n>0)out.push({iso,cfg:c,n:c.n,extra:[]})}
   if(ws.sizing.mode!=='rhythm'&&out.length){
     const T=planTotal(ws,out);
     const W=sum(out.map(d=>d.cfg.n));let acc=0,prev=0;
     out.forEach(d=>{acc+=d.cfg.n;const cur=Math.round(T*acc/W);d.n=cur-prev;prev=cur});
   }
-  return keepZero?out:out.filter(d=>d.n>0);
+  const work=out.slice();
+  const at={};out.forEach(d=>at[d.iso]=d);
+  const entry=iso=>{if(!at[iso]){at[iso]={iso,cfg:dayCfg(ws,iso),n:0,extra:[]};out.push(at[iso])}return at[iso]};
+  (ws.goals||[]).forEach(g=>{
+    if(!g.on||g.kind!=='inject')return;
+    if(g.inject.mode==='dates'){
+      Array.from(parseDates(g.inject.dates)).filter(iso=>iso>=start&&iso<=end).sort().forEach(iso=>{const e=entry(iso);for(let i=0;i<g.inject.n;i++)e.extra.push({g:g.id,opt:0,i})});
+    }else{
+      let cand;
+      if(g.when.k==='dates')cand=Array.from(parseDates(g.when.v)).filter(iso=>iso>=start&&iso<=end).sort().map(entry);
+      else cand=work.filter(d=>whenMatch(g.when,d.iso));
+      cand.slice(0,92).forEach(e=>{const per=Math.min(g.inject.n,4);for(let i=0;i<per;i++)e.extra.push({g:g.id,opt:1,i})});
+    }
+  });
+  out.sort((a,b)=>a.iso<b.iso?-1:a.iso>b.iso?1:0);
+  return keepZero?out:out.filter(d=>d.n>0||d.extra.length);
 }
+function injectCount(ws){let n=0;(ws.goals||[]).forEach(g=>{if(!g.on||g.kind!=='inject')return;if(g.inject.mode==='dates'){const {start,end}=rangeOf(ws);n+=Array.from(parseDates(g.inject.dates)).filter(iso=>iso>=start&&iso<=end).length*g.inject.n}else n+=g.inject.n});return n}
 function fpOf(ws){
   return fnv(JSON.stringify([ws.roles.map(r=>r.id),ws.categories.map(c=>[c.id,c.staff,c.share,c.planned]),
     ws.sites.map(s=>[s.id,s.cat,s.km,s.loc,s.crit,s.tag,s.zone,s.weight,s.minV,s.maxV,s.days,s.blackout,s.active,s.gapMin,s.gapMax]),
@@ -577,11 +622,15 @@ function compile(ws){
   const dayFocus=days.map(d=>{const f=d.cfg.focus;if(f==='near')return -2;if(f==='far')return -3;if(cIx[f]!==undefined)return cIx[f];return -1});
   const vDay=[],vLock=[],vSeat0=[],vSeatN=[],visits=[];
   const seatVisit=[],seatRole=[],seatIdx=[],seatLock=[],seats=[];
+  const injG={};(ws.goals||[]).forEach(g=>{if(g.on&&g.kind==='inject')injG[g.id]=g});
+  const vInj=[],vOptA=[];
   days.forEach((d,di)=>{
     if(!C)return;
-    for(let k=0;k<d.n;k++){
-      const key=d.iso+'#'+k,v=visits.length;
-      visits.push({key,d:di,k});vDay.push(di);
+    const slots=[];for(let k=0;k<d.n;k++)slots.push({key:d.iso+'#'+k,k,g:null,opt:0});
+    (d.extra||[]).forEach((x,j)=>slots.push({key:d.iso+'#x'+x.g+'#'+x.i,k:d.n+j,g:x.g,opt:x.opt}));
+    for(const sl of slots){
+      const key=sl.key,k=sl.k,v=visits.length;
+      visits.push({key,d:di,k,inj:sl.g,opt:sl.opt});vDay.push(di);vInj.push(sl.g);vOptA.push(sl.opt);
       const ls=ws.locks.sites[key];vLock.push(ls&&sIx[ls]!==undefined?sIx[ls]:-2);
       vSeat0.push(seats.length);
       roles.forEach((r,ri)=>{for(let i=0;i<seatsPerRole[ri];i++){
@@ -595,6 +644,7 @@ function compile(ws){
     }
   });
   const V=visits.length,Z=seats.length;
+  let Veff=V;{const cnt={};vInj.forEach((g,v)=>{if(vOptA[v]){Veff--;cnt[g]=(cnt[g]||0)+1}});for(const g in cnt)Veff+=Math.min(cnt[g],injG[g]?injG[g].inject.n:0)}
   const sAvail=new Array(S*D).fill(0);
   sites.forEach((s,si)=>days.forEach((d,di)=>{sAvail[si*D+di]=s.days[dowOf(d.iso)]&&!s.blackout.includes(d.iso)?1:0}));
   const pAvail=new Array(N*D).fill(0);
@@ -602,30 +652,27 @@ function compile(ws){
   const roleMembers=roles.map(r=>{const a=[];people.forEach((p,pi)=>{if(p.roles.includes(r.id))a.push(pi)});return a});
 
   const gMin=new Array(S).fill(0),gMax=new Array(S).fill(-1);
-  const grpN=[],grpOp=[],grpGoal=[],siteGrp=sites.map(()=>[]);
   const catFloor=new Array(C).fill(0),catCeil=new Array(C).fill(Infinity);
-  const OPC={min:0,exact:1,max:2};
+  const nWeeks0=new Set(dayWeek).size||1;
   const activeGoals=ws.goals.filter(g=>g.on);
   activeGoals.forEach(g=>{
+    if(!simpleGoal(g)||g.when.k!=='all')return;
     const set=goalSites(ws,g,sites).map(s=>sIx[s.id]).filter(x=>x!==undefined);
-    if(g.per==='each'){set.forEach(si=>{if(g.op!=='max')gMin[si]=Math.max(gMin[si],g.n);if(g.op!=='min')gMax[si]=gMax[si]<0?g.n:Math.min(gMax[si],g.n)})}
-    else{
-      if(g.scope==='all'&&g.op==='min')return;
-      const gi=grpN.length;grpN.push(g.n);grpOp.push(OPC[g.op]);grpGoal.push(g.id);set.forEach(si=>siteGrp[si].push(gi));
-      if(g.scope==='cat'&&cIx[g.ref]!==undefined){const ci=cIx[g.ref];if(g.op!=='max')catFloor[ci]=Math.max(catFloor[ci],g.n);if(g.op!=='min')catCeil[ci]=Math.min(catCeil[ci],g.n)}
-    }
+    const mul=g.period==='week'?nWeeks0:1,b=goalBounds(g),lo=b.lo*mul,hi=b.hi<0?-1:b.hi*mul;
+    if(g.per==='each'){set.forEach(si=>{if(lo>0)gMin[si]=Math.max(gMin[si],lo);if(hi>=0)gMax[si]=gMax[si]<0?hi:Math.min(gMax[si],hi)})}
+    else if(g.what.k==='cat'&&!g.what.not&&!g.what.more&&Array.isArray(g.what.v)&&g.what.v.length===1&&cIx[g.what.v[0]]!==undefined){const ci=cIx[g.what.v[0]];if(lo>0)catFloor[ci]=Math.max(catFloor[ci],lo);if(hi>=0)catCeil[ci]=Math.min(catCeil[ci],hi)}
   });
-  const goalsOn=activeGoals.length>0;
+  const goalsOn=activeGoals.some(g=>g.kind==='count');
   const shareSum=sum(cats.map(c=>c.share));
   const mixOn=shareSum>0&&C>1;
   const base=cats.map((c,ci)=>shareSum>0?c.share/shareSum:sites.filter(s=>s.cat===c.id).length/Math.max(1,S));
-  let catTarget=cats.map((c,ci)=>V*base[ci]);
+  let catTarget=cats.map((c,ci)=>Veff*base[ci]);
   if(goalsOn&&C){
     const floor=cats.map((c,ci)=>{let f=0;sites.forEach((s,si)=>{if(sCat[si]===ci)f+=gMin[si]});return Math.max(f,catFloor[ci])});
     const ceil=cats.map((c,ci)=>{const ms=[];sites.forEach((s,si)=>{if(sCat[si]===ci)ms.push(si)});let cap=catCeil[ci];if(ms.length&&ms.every(si=>gMax[si]>=0))cap=Math.min(cap,sum(ms.map(si=>gMax[si])));return Math.max(cap,floor[ci])});
-    const rest=Math.max(0,V-sum(floor));
+    const rest=Math.max(0,Veff-sum(floor));
     catTarget=cats.map((c,ci)=>Math.min(ceil[ci],floor[ci]+rest*base[ci]));
-    const left=V-sum(catTarget);
+    const left=Veff-sum(catTarget);
     if(left>.01){const open=cats.map((c,ci)=>ci).filter(ci=>catTarget[ci]<ceil[ci]-.01);const bs=sum(open.map(ci=>base[ci]))||1;open.forEach(ci=>catTarget[ci]=Math.min(ceil[ci],catTarget[ci]+left*(base[ci]||1/open.length)/bs))}
   }
   const demand=roles.map((r,ri)=>{let x=0;for(let c=0;c<C;c++)x+=catTarget[c]*need[c*R+ri];return x});
@@ -705,6 +752,7 @@ function compile(ws){
   roles.forEach((r,ri)=>{if(!roleMembers[ri].length)return;let cap=0;roleMembers[ri].forEach(pi=>{cap+=capOf(pi)/people[pi].roles.filter(x=>rIx[x]!==undefined).length});cap=Math.floor(cap);if(demand[ri]>cap+.01)warn.push({k:'capacity',r:r.id,need:Math.round(demand[ri]),cap})});
   cats.forEach((c,ci)=>{const mins=sum(sites.filter(s=>s.cat===c.id).map(s=>s.minV===''?0:+s.minV));if(mins>catTarget[ci]+.5)warn.push({k:'minover',c:c.id,need:mins,have:Math.round(catTarget[ci])})});
   if(goalsOn&&ws.sizing.mode!=='goals'){const gn=goalNeed(ws);if(gn>V)warn.push({k:'goalshort',need:gn,have:V})}
+  const GC=compileGoals(ws,{sites,people,days,cats,roles,sIx,pIx,dayWk,nWk,vInj,vOptA,injG,capOf,warn,plannableIds:new Set(plannable(ws).map(s=>s.id))});
   if(gate&&N){
     const bad=[];sites.forEach((s,si)=>{const cr=sCrit[si];if(!cr)return;const ci=sCat[si];let best=-1;for(let p=0;p<N;p++)best=Math.max(best,pRankC[p*C+ci]);if(best<cr-ws.rules.rankTol)bad.push(s.name)});
     if(bad.length)warn.push({k:'rankgap',n:bad.length,ex:bad.slice(0,3).join(', ')});
@@ -719,7 +767,7 @@ function compile(ws){
   }
   const P={D,V,S,N,R,C,Z,vDay,vLock,vSeat0,vSeatN,seatVisit,seatRole,seatIdx,seatLock,
     sCat,sKm:sites.map(s=>+s.km||0),sZone,sExp,sMin,sMax,sAvail,need,catTarget,mixOn,
-    gMin,gMax,grpN,grpOp,siteGrp,sCrit,pRankC,
+    gMin,gMax,sCrit,pRankC,goals:GC.goals,vSet:GC.vSet,vsets:GC.vsets,vOpt:vOptA,vReq:GC.vReq,reqs:GC.reqs,vGrp:GC.vGrp,
     pAvail,pHome:people.map(p=>+p.home||0),pPref:people.map(p=>p.pref==='near'?1:p.pref==='far'?2:0),pTarget,
     pMaxLoad:people.map(p=>p.maxLoad===''?-1:+p.maxLoad),pMaxWeek:people.map(p=>p.maxWeek===''?-1:+p.maxWeek),pIdeal,rel,aff,
     dayNum:dayNumA,dayWeek,dayFocus,roleMembers,w,pRun,pOff,sDist:Array.from(sDist),pSiteD:Array.from(pSiteD),
@@ -728,10 +776,54 @@ function compile(ws){
     rcOn:rcOn?1:0,rcMin,rcMax,rcFix,rcTarget,pLast,rcHard:rc.hard?1:0,rcInPlan:rc.inPlan?1:0,rcOver:rc.overdue?1:0,rcFresh:rc.fresh==='due'?1:0,rcPD:rc.personDays,rcStart:stN,rcEnd:enN,
     Dn,seed:ws.engine.seed,iters,runs:ws.engine.runs};
   const map={start,end,days:days.map(d=>({iso:d.iso,n:d.n,focus:d.cfg.focus})),visits,seats:seats.map(s=>({key:s.key,v:s.v,r:s.r,i:s.i})),
-    roles:roles.map(r=>r.id),cats:cats.map(c=>c.id),sites:sites.map(s=>s.id),people:people.map(p=>p.id),pTarget,catTarget,demand,sExp,grpGoal,gMin,gMax,book:bk.ids};
+    roles:roles.map(r=>r.id),cats:cats.map(c=>c.id),sites:sites.map(s=>s.id),people:people.map(p=>p.id),pTarget,catTarget,demand,sExp,gMin,gMax,book:bk.ids,weeks:(()=>{const o=[];days.forEach((d,i)=>{if(o[dayWk[i]]==null)o[dayWk[i]]=d.iso});return o})(),goalOf:GC.goals.map(q=>q.gid),goalInt:GC.goals.map(q=>q.vg>=0?1:0)};
   return {P,map,warn};
 }
 
+function compileGoals(ws,X){
+  const {sites,people,days,sIx,pIx,dayWk,nWk,vInj,vOptA,injG,capOf,warn}=X;
+  const S=sites.length,N=people.length,D=days.length,V=vInj.length;
+  const out={goals:[],vSet:new Array(V).fill(-1),vsets:[],vReq:new Array(V).fill(-1),reqs:[],vGrp:new Array(V).fill(-1)};
+  if(!S||!D)return out;
+  const PER={each:0,total:1,person:2};
+  const mkWho=g=>{const all=g.who.k==='all';const pm=people.map(p=>all||whoMatch(p,g.who)?1:0);return {all,pm,n:pm.filter(Boolean).length}};
+  (ws.goals||[]).forEach((g,gi)=>{
+    if(!g.on)return;
+    const b=goalBounds(g),wf=g.w/50;
+    if(g.kind==='inject'){
+      const sm=sites.map(s=>whatMatch(s,g.what)?1:0);
+      const vs=out.vsets.length;out.vsets.push(sm);
+      const who=mkWho(g);
+      let rq=-1;
+      if(!who.all){if(!who.n){warn.push({k:'goalnop',g:g.id});}else{rq=out.reqs.length;out.reqs.push({pm:who.pm,need:g.mode==='together'?Math.min(g.k,who.n):1,hard:g.hard?1:0,wf,gid:g.id})}}
+      const grp=gi;let nv=0;
+      for(let v=0;v<V;v++)if(vInj[v]===g.id){out.vSet[v]=vs;out.vReq[v]=rq;out.vGrp[v]=grp;nv++}
+      if(!sm.some(Boolean))warn.push({k:'goalnone',g:g.id});
+      if(!nv)warn.push({k:'injout',g:g.id});
+      if(g.inject.mode==='pick'&&nv){
+        out.goals.push({gid:g.id,sm,dm:days.map(()=>1),per:1,nw:1,U:1,B:1,ex:[1],places:0,who:0,pm:who.pm,mode:0,k:1,lo:g.inject.n,hi:g.inject.n,hard:g.hard?1:0,wf:Math.max(wf,1),vg:grp});
+      }
+      return;
+    }
+    const sm=sites.map(s=>whatMatch(s,g.what)?1:0);
+    if(!sm.some(Boolean)){warn.push({k:'goalnone',g:g.id});return}
+    const ds=g.when.k==='dates'?parseDates(g.when.v):null;
+    const dm=days.map(d=>whenMatch(g.when,d.iso,ds)?1:0);
+    if(!dm.some(Boolean)){warn.push({k:'goalnoday',g:g.id});return}
+    const who=mkWho(g);
+    if(!who.n){warn.push({k:'goalnop',g:g.id});return}
+    const per=PER[g.per],nw=g.period==='week'?nWk:1;
+    const U=per===0?S:per===1?1:N,B=U*nw,ex=new Array(B).fill(0);
+    const wkOk=new Array(nw).fill(0);for(let d=0;d<D;d++)if(dm[d])wkOk[nw>1?dayWk[d]:0]=1;
+    for(let u=0;u<U;u++){const okU=per===0?sm[u]:per===2?who.pm[u]:1;if(!okU)continue;for(let w=0;w<nw;w++)if(wkOk[w])ex[u*nw+w]=1}
+    const k=g.mode==='together'?Math.max(1,Math.min(g.k,who.n)):1;
+    out.goals.push({gid:g.id,sm,dm,per,nw,U,B,ex,places:g.measure==='places'?1:0,who:who.all?0:1,pm:who.pm,mode:g.mode==='together'?1:0,k,lo:b.lo,hi:b.hi,hard:g.hard?1:0,wf,vg:-1});
+    if(per===2&&nw===1&&b.lo>0)people.forEach((p,pi)=>{if(who.pm[pi]&&capOf(pi)<b.lo)warn.push({k:'goalcap',g:g.id,p:p.id,need:b.lo,cap:capOf(pi)})});
+    if(g.mode==='together'&&!who.all&&g.k>who.n)warn.push({k:'goalk',g:g.id,n:who.n,k:g.k});
+    if(per===1&&g.measure==='places'&&b.lo>sm.filter(Boolean).length)warn.push({k:'goalplaces',g:g.id,need:b.lo,have:sm.filter(Boolean).length});
+  });
+  return out;
+}
 const SOFT_SITE=1.2,SOFT_WITH_AV=3,SOFT_WITH_PR=.8,SOFT_TEAM=2,SOFT_COUNT=2;
 const OPN={min:0,max:1,exact:2,ifany:3};
 function compileBook(ws,people,sites,days,cats,roles){
@@ -903,7 +995,7 @@ function relinkHistory(ws){
 function histFromPlan(ws){
   const pl=ws.plan;if(!pl||!pl.map||!pl.res)return [];
   const m=pl.map,r=pl.res,out=[];
-  m.visits.forEach((v,vi)=>{const si=r.siteOf[vi];if(si<0)return;const sid=m.sites[si];const ppl=[];
+  m.visits.forEach((v,vi)=>{const si=r.siteOf[vi];if(si<0||si==null)return;const sid=m.sites[si];const ppl=[];
     for(let z=v.z0;z<v.z0+v.zn;z++){if(!r.stats.active[z])continue;const p=r.seatP[z];if(p>=0&&!ppl.includes(m.people[p]))ppl.push(m.people[p])}
     out.push({id:uid('h'),date:m.days[v.d].iso,site:sid,sn:'',people:ppl,pn:[],note:'',src:'plan'})});
   return out;
@@ -931,5 +1023,6 @@ G.MV={$,$$,esc,uid,clamp,sum,avg,num,intOr,byId,clone,fnv,gini,mulberry32,
   TEMPLATES,TEMPLATE_ORDER,blankWS,mkRole,mkCat,mkLoc,mkSite,mkPerson,mkGoal,normalize,migrateLegacy,fromDataset,syncLoc,
   Store,rangeOf,dayCfg,planDays,planTotal,plannable,goalSites,goalNeed,fpOf,fpWithLocks,compile,csvParse,csvRow,
   SENSES,WHO_K,WHAT_K,RELS,TEAM_OPS,COUNT_OPS,FLIP,isHard,normRule,mkRule,whoMatch,whatMatch,resolveBook,resolveGoals,parseDates,overlayList,bookForExport,toDataset,mergeDataset,locDist,arr7,
-  RC_MODES,defaultRecency,normRecency,rcWindow,parseAnyDate,parseHistoryRows,historyAoa,mergeHistory,relinkHistory,histFromPlan,recencyBoard,hnorm};
+  RC_MODES,defaultRecency,normRecency,rcWindow,parseAnyDate,parseHistoryRows,historyAoa,mergeHistory,relinkHistory,histFromPlan,recencyBoard,hnorm,
+  normGoal,goalBounds,goalPeople,goalsForExport,injectCount,whenMatch,normWhen,MULTI_K,G_PER,G_OP,G_MODE,weeksIn};
 })(window);

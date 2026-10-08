@@ -49,7 +49,7 @@ function derive(){
   const siteOfV=v=>{const i=r.siteOf[v];return i>=0?byId(ws.sites,m.sites[i]):null};
   const personOfZ=z=>{const i=r.seatP[z];return i>=0?byId(ws.people,m.people[i]):null};
   const byDay=m.days.map(()=>[]);
-  m.visits.forEach((v,vi)=>byDay[v.d].push(vi));
+  m.visits.forEach((v,vi)=>{if(v.opt&&r.siteOf[vi]<0)return;byDay[v.d].push(vi)});
   const pd={};
   m.seats.forEach((s,z)=>{const p=r.seatP[z];if(p<0||!r.stats.active[z])return;const pid=m.people[p],d=m.visits[s.v].d;(pd[pid+'|'+d]=pd[pid+'|'+d]||[]).push(z)});
   const flagged=new Set(),dayIss=new Set();
@@ -64,10 +64,11 @@ function derive(){
   const targets={};m.people.forEach((pid,i)=>targets[pid]=m.pTarget[i]);
   const uses={};m.sites.forEach((sid,i)=>uses[sid]=r.stats.siteUse[i]);
   const goalIx={};
-  (ws.goals||[]).forEach(g=>{if(!g.on)return;const set=M.goalSites(ws,g).filter(s=>uses[s.id]!=null);
-    const ok=u=>g.op==='min'?u>=g.n:g.op==='max'?u<=g.n:u===g.n;
-    if(g.per==='each'){const met=set.filter(s=>ok(uses[s.id]||0)).length;goalIx[g.id]={met:met===set.length,txt:met+'/'+set.length}}
-    else{const tot=sum(set.map(s=>uses[s.id]||0));goalIx[g.id]={met:ok(tot),txt:tot+' / '+g.n}}});
+  const gr=r.stats.goalRes||[];
+  (m.goalOf||[]).forEach((gid,qi)=>{const x=gr[qi],g=byId(ws.goals,gid);if(!x||!g||g.kind==='inject')return;
+    const single=x.n===1&&g.per==='total'&&g.period!=='week';
+    goalIx[gid]={met:x.met===x.n,txt:single?x.sum+' / '+(g.op==='between'?g.n+'–'+g.n2:g.op==='max'?(g.n===0?t('gNone'):'≤ '+g.n):g.n):x.met+'/'+x.n,tip:t('gProgTip',{met:x.met,n:x.n,s:x.short,o:x.over})}});
+  (ws.goals||[]).forEach(g=>{if(!g.on||g.kind!=='inject'||goalIx[g.id])return;let n=0,bad=0;m.visits.forEach((v,vi)=>{if(v.inj!==g.id||r.siteOf[vi]<0)return;n++;if((r.issues||[]).some(x=>x.v===vi&&(x.k==='injwho'||x.k==='injset')))bad++});const want=g.inject.mode==='pick'?g.inject.n:m.visits.filter(v=>v.inj===g.id).length;goalIx[g.id]={met:!bad&&n>0&&n===want,txt:n+' / '+want+'×'}});
   const D={m,r,siteOfV,personOfZ,byDay,pd,flagged,dayIss,iss,loads,targets,uses,goalIx,_ws:ws.updated};
   Object.defineProperty(pl,'derived',{value:D,enumerable:false,configurable:true,writable:true});
   return D;
@@ -88,9 +89,11 @@ function issueText(x,D){
     case 'rest':return t('i_rest',{p:pn(x.p),d1:dn(x.d1),d2:dn(x.d2),n:x.n});
     case 'run':return t('i_run',{p:pn(x.p),d1:dn(x.d1),d2:dn(x.d2),n:x.n});
     case 'rankgap':return t('i_rankgap',{s:sn(x.s),d:vd(x.v),n:x.n,max:x.max});
-    case 'goalmiss':return t('i_goalmiss',{s:sn(x.s),n:x.n,min:x.min});
-    case 'goalover':return t('i_goalover',{s:sn(x.s),n:x.n,max:x.max});
-    case 'goalgrp':{const g=byId(ws.goals,m.grpGoal&&m.grpGoal[x.g]);return t('i_goalgrp',{g:g?goalText(g):'—',n:x.n,max:x.max})}
+    case 'goal':{const g=byId(ws.goals,m.goalOf&&m.goalOf[x.q]);const unit=x.per===0?sn(x.u):x.per===2?pn(x.u):'';const wk=x.nw>1&&m.weeks?t('gWeekOf',{d:fmtDS(m.weeks[x.w])}):'';
+      const want=x.hi<0?'≥ '+x.lo:x.lo===x.hi?'= '+x.lo:x.lo>0?x.lo+'–'+x.hi:'≤ '+x.hi;
+      return t('i_goal',{g:g?goalText(g):'—',u:[unit,wk].filter(Boolean).join(' · '),n:x.n,want}).replace(' ()','')}
+    case 'injwho':{const g=byId(ws.goals,x.gid);return t('i_injwho',{d:vd(x.v),s:vs(x.v),n:x.n,min:x.min,g:g?goalText(g):'—'})}
+    case 'injset':return t('i_injset',{d:vd(x.v),s:vs(x.v)});
     case 'perday':return t('i_perday',{p:pn(x.p),n:x.n,d:dn(x.d)});
     case 'maxload':return t('i_maxload',{p:pn(x.p),n:x.n,max:x.max});
     case 'maxweek':return t('i_maxweek',{p:pn(x.p),n:x.n,max:x.max});
@@ -131,6 +134,10 @@ function warnText(w){
     case 'minover':{const c=catOf(w.c);return t('w_minover',{c:c?c.name:'—',need:w.need,have:w.have})}
     case 'tight':return t('w_tight',{r:rn(w.r),d1:fmtD(w.d1),d2:fmtD(w.d2),need:w.need,free:w.free});
     case 'goalshort':return t('w_goalshort',{need:w.need,have:w.have});
+    case 'goalnone':case 'goalnoday':case 'goalnop':case 'injout':return t('w_'+w.k,{g:goalText(byId(A().ws.goals,w.g))});
+    case 'goalcap':{const p=byId(A().ws.people,w.p);return t('w_goalcap',{g:goalText(byId(A().ws.goals,w.g)),p:p?p.name:'—',need:w.need,cap:w.cap})}
+    case 'goalk':return t('w_goalk',{g:goalText(byId(A().ws.goals,w.g)),n:w.n,k:w.k});
+    case 'goalplaces':return t('w_goalplaces',{g:goalText(byId(A().ws.goals,w.g)),need:w.need,have:w.have});
     case 'rankgap':return t('w_rankgap',{n:w.n,ex:w.ex});
     case 'rulenone':return t('w_rulenone',{r:ruleText(byId(A().ws.book||[],w.b))});
     case 'ruleteam':return t('w_ruleteam',{r:ruleText(byId(A().ws.book||[],w.b)),n:w.n,have:w.have});
@@ -215,20 +222,104 @@ function planView(){
     +'<div class="status" id="status">'+statusHTML()+'</div></div></section>';
   return scope+recipeCard(ws,pdays,V,C)+scheduleCard(C,D,stale);
 }
+const NUM_K=['rankGe','rankLe','critGe','critLe','kmGe','kmLe'];
+function whenLabel(w){
+  if(!w||w.k==='all')return '';
+  if(w.k==='dow')return w.v.map((x,i)=>x?arr('dows')[i]:null).filter(Boolean).join(', ')||'—';
+  return w.v||'—';
+}
+function goalWhat(g){return g.what.k==='all'&&!g.what.more?t('g_allSites'):mLabel(g.what)}
+function goalWho(g){return g.who.k==='all'?'':mLabel(g.who,true)}
 function goalText(g){
-  const ws=A().ws;
-  const sc=g.scope==='all'?t('g_allSites'):g.scope==='crit'?t('g_critTxt',{n:g.ref||0}):g.scope==='cat'?((catOf(g.ref)||{}).name||'—'):g.scope==='loc'?((locOf(g.ref)||{}).name||'—'):g.scope==='tag'?(g.ref||'—'):((byId(ws.sites,g.ref)||{}).name||'—');
-  return t(g.per==='each'?'g_txtEach':'g_txtTotal',{op:t('op_'+g.op),n:g.n,s:sc});
+  if(!g)return '—';
+  if(g.label)return g.label;
+  const wl=whenLabel(g.when),who=goalWho(g);
+  if(g.kind==='inject'){
+    const when=g.inject.mode==='dates'?(g.inject.dates||'—'):(wl||t('gw_all'));
+    return t('gt_inject',{n:g.inject.n,what:goalWhat(g),when})+(who?' · '+t('g_with')+' '+who:'');
+  }
+  const b=g.op==='between'?g.n+'–'+g.n2:g.n;
+  const head=g.per==='each'?t('gt_each',{what:goalWhat(g)}):g.per==='person'?t('gt_person',{who:who||t('bw_all'),what:goalWhat(g)}):t('gt_total',{what:goalWhat(g)});
+  const withTxt=g.per!=='person'&&who?' · '+(g.mode==='together'?t('gt_together',{k:g.k,who}):t('g_with')+' '+who):'';
+  return head+withTxt+(wl?' · '+wl:'')+': '+(g.op==='between'?t('op_between'):t('op_'+g.op))+' '+b+' '+t(g.measure==='places'?'gms_places':'gms_visits')+(g.period==='week'?' '+t('gpd_week'):'')+(g.hard?' 🔒':'');
 }
-function goalRefOpts(g){
-  const ws=A().ws;
-  if(g.scope==='cat')return ws.categories.filter(c=>c.planned).map(c=>[c.id,c.name,c.color,ws.sites.filter(s=>s.cat===c.id&&s.active).length+'']);
-  if(g.scope==='loc'){const cnt={};M.plannable(ws).forEach(s=>{if(s.loc)cnt[s.loc]=(cnt[s.loc]||0)+1});return (ws.locations||[]).filter(l=>cnt[l.id]).sort((a,b)=>a.km-b.km).map(l=>[l.id,l.name,null,cnt[l.id]+' · '+r1(l.km)+' '+unitL()])}
-  if(g.scope==='tag'){const cnt={};M.plannable(ws).forEach(s=>{if(s.tag)cnt[s.tag]=(cnt[s.tag]||0)+1});return Object.keys(cnt).sort().map(k=>[k,k,null,cnt[k]+''])}
-  if(g.scope==='crit')return [25,50,75,100].map(v=>[String(v),'≥ '+v+' · '+t('lvl'+v),null,M.plannable(ws).filter(s=>s.crit>=v).length+'']);
-  if(g.scope==='site')return M.plannable(ws).map(s=>[s.id,s.name,catColor(s.cat),(locOf(s.loc)||{}).name||'']);
-  return [];
+function gPicker(g,side,isWho){
+  const m=g[side];
+  let h='<span class="mgrp">'+gPicker1(g,side,m,isWho,'');
+  (m.more||[]).forEach((c,i)=>{h+='<button class="joinbtn" data-act="goalJoin" data-id="'+g.id+'" data-side="'+side+'">'+esc(t(m.join==='or'?'bj_or':'bj_and'))+'</button>'+gPicker1(g,side,c,isWho,i)+'<button class="ibtn xs" data-act="goalLess" data-id="'+g.id+'" data-side="'+side+'" data-i="'+i+'" title="'+esc(t('remove'))+'">'+ic('ic-x')+'</button>'});
+  if(m.k!=='all'&&(m.more||[]).length<3)h+='<button class="ibtn xs" data-act="goalMore" data-id="'+g.id+'" data-side="'+side+'" title="'+esc(t('bMore'))+'">'+ic('ic-plus')+'</button>';
+  return h+'</span>';
 }
+function gPicker1(g,side,m,isWho,mi){
+  const kOpts=(isWho?whoKOpts():whatKOpts()).filter(o=>mi===''||o[0]!=='all');
+  const at='data-id="'+g.id+'" data-side="'+side+'"'+(mi===''?'':' data-mi="'+mi+'"');
+  let h=(m.k!=='all'?'<button class="notbtn'+(m.not?' on':'')+'" data-act="goalNot" '+at+' title="'+esc(t('bNotT'))+'">'+esc(t('bNot'))+'</button>':'')+dd('goalM',at+' data-f="k"',m.k,kOpts,{cls:'bdd'});
+  if(m.k==='all')return h;
+  if(NUM_K.includes(m.k)){
+    const v=Array.isArray(m.v)?m.v[0]:m.v;
+    if(m.k==='kmGe'||m.k==='kmLe')return h+'<span class="numwrap"><input class="inp num s" type="number" min="0" data-bind="goalNum" '+at+' value="'+esc(v)+'"><span class="unit">'+unitL()+'</span></span>';
+    return h+dd('goalM',at+' data-f="v"',v,lvlSel(),{cls:'bdd'});
+  }
+  const vo=isWho?whoVOpts(m.k):whatVOpts(m.k);
+  const vals=Array.isArray(m.v)?m.v:(m.v?[m.v]:[]);
+  const lab=x=>{const o=vo.find(y=>String(y[0])===String(x));return o?o[1]:x};
+  h+='<span class="vchips">'+vals.map((x,i)=>(i?'<span class="vor">'+esc(t('bj_or'))+'</span>':'')+'<span class="vchip">'+esc(lab(x))+'<button data-act="goalDelV" '+at+' data-v="'+esc(x)+'" aria-label="'+esc(t('remove'))+'">'+ic('ic-x')+'</button></span>').join('');
+  const rest=vo.filter(o=>!vals.includes(String(o[0])));
+  if(rest.length)h+=dd('goalAddV',at,'',rest,{ph:vals.length?'+':t('pick'),cls:'bdd adddd'+(vals.length?' plus':''),search:rest.length>8});
+  return h+'</span>';
+}
+function whenPicker(g,w,f){
+  const id=g.id;
+  let h='<div class="seg mini">'+[['all','gw_all'],['dow','gw_dow'],['dates','gw_dates']].map(([k,l])=>'<button class="'+(w.k===k?'on':'')+'" data-act="goalWhen" data-id="'+id+'" data-v="'+k+'">'+esc(t(l))+'</button>').join('')+'</div>';
+  if(w.k==='dow'){const n=arr('dows1'),w0=A().ws.rules.weekStart;h+='<div class="wds">';for(let k=0;k<7;k++){const i=(w0+k)%7;h+='<button class="wd'+(w.v[i]?' on':'')+'" data-act="goalDow" data-id="'+id+'" data-i="'+i+'" title="'+esc(arr('dows')[i])+'">'+n[i]+'</button>'}h+='</div>'}
+  else if(w.k==='dates')h+='<input class="inp slim bdates" dir="ltr" data-bind="goalWhenDates" data-id="'+id+'" value="'+esc(w.v)+'" placeholder="2026-10-06, 2026-10-12..2026-10-15">';
+  return h;
+}
+function goalRow(g,res){
+  const ws=A().ws,id=g.id;
+  const kOpts=[['count',t('gk_count')],['inject',t('gk_inject')]];
+  let s='';
+  if(g.kind==='inject'){
+    s='<div class="gline">'+dd('goal','data-id="'+id+'" data-f="kind"',g.kind,kOpts,{cls:'bdd rel'})
+      +stepper('goalN','data-id="'+id+'" data-k="injN"',g.inject.n)+'<span class="gw">'+esc(t('gi_visitsTo'))+'</span>'+gPicker(g,'what',false)+'</div>'
+      +'<div class="gline sub"><span class="gw">'+esc(t('g_on'))+'</span><div class="seg mini">'+[['dates','gi_fixed'],['pick','gi_pick']].map(([k,l])=>'<button class="'+(g.inject.mode===k?'on':'')+'" data-act="goalInj" data-id="'+id+'" data-v="'+k+'">'+esc(t(l))+'</button>').join('')+'</div>'
+      +(g.inject.mode==='dates'?'<input class="inp slim bdates" dir="ltr" data-bind="goalInjDates" data-id="'+id+'" value="'+esc(g.inject.dates)+'" placeholder="2026-10-14, 2026-10-21">':'<span class="gw">'+esc(t('gi_within'))+'</span>'+whenPicker(g,g.when))
+      +'</div>'
+      +'<div class="gline sub"><span class="gw">'+esc(t('g_with'))+'</span>'+gPicker(g,'who',true)
+      +(g.who.k!=='all'?dd('goal','data-id="'+id+'" data-f="mode"',g.mode==='together'?'together':'any',[['any',t('gm_any')],['together',t('gm_together')]],{cls:'bdd'})+(g.mode==='together'?stepper('goalN','data-id="'+id+'" data-k="k"',g.k):''):'')+'</div>';
+  }else{
+    const perOpts=[['each',t('gp_each')],['total',t('gp_total')],['person',t('gp_person')]];
+    s='<div class="gline">'+dd('goal','data-id="'+id+'" data-f="kind"',g.kind,kOpts,{cls:'bdd rel'})+dd('goal','data-id="'+id+'" data-f="per"',g.per,perOpts,{cls:'bdd'});
+    if(g.per==='person')s+=gPicker(g,'who',true)+'<span class="gw">'+esc(t('g_at'))+'</span>'+gPicker(g,'what',false);
+    else s+=gPicker(g,'what',false);
+    s+='</div>';
+    if(g.per!=='person'){
+      s+='<div class="gline sub"><span class="gw">'+esc(t('g_with'))+'</span>'+gPicker(g,'who',true)
+        +(g.who.k!=='all'?dd('goal','data-id="'+id+'" data-f="mode"',g.mode==='together'?'together':'any',[['any',t('gm_any')],['together',t('gm_together')]],{cls:'bdd'})+(g.mode==='together'?stepper('goalN','data-id="'+id+'" data-k="k"',g.k):''):'')+'</div>';
+    }
+    s+='<div class="gline sub"><span class="gw">'+esc(t('g_on'))+'</span>'+whenPicker(g,g.when)+'</div>';
+    s+='<div class="gline"><span class="gw">'+esc(t('g_gets'))+'</span>'+dd('goal','data-id="'+id+'" data-f="op"',g.op,[['min',t('op_min')],['exact',t('op_exact')],['max',t('op_max')],['between',t('op_between')]],{cls:'bdd'})
+      +stepper('goalN','data-id="'+id+'" data-k="n"',g.n)+(g.op==='between'?'<span class="gw">–</span>'+stepper('goalN','data-id="'+id+'" data-k="n2"',g.n2):'')
+      +dd('goal','data-id="'+id+'" data-f="measure"',g.measure,[['visits',t('gms_visits')],['places',t('gms_places')]],{cls:'bdd'})
+      +'<div class="seg mini">'+[['plan','gpd_plan'],['week','gpd_week']].map(([k,l])=>'<button class="'+(g.period===k?'on':'')+'" data-act="goalPeriod" data-id="'+id+'" data-v="'+k+'">'+esc(t(l))+'</button>').join('')+'</div></div>';
+  }
+  let meta='';
+  if(g.kind==='count'){
+    const set=M.goalSites(ws,g),ppl=M.goalPeople(ws,g);
+    meta=g.per==='each'?t('g_sitesX',{n:set.length,v:set.length*(g.op==='max'?0:g.n)}):g.per==='person'?t('g_peopleX',{n:ppl.length,s:set.length}):t('g_sitesIn',{n:set.length});
+    if(g.who.k!=='all'&&g.per!=='person')meta+=' · '+t('g_ppl',{n:ppl.length});
+  }else meta=t('g_sitesIn',{n:M.goalSites(ws,g).length});
+  let prog='';
+  if(res)prog='<span class="gprog '+(res.met?'good':'bad')+'" title="'+esc(res.tip||'')+'">'+ic(res.met?'ic-check':'ic-alert')+esc(res.txt)+'</span>';
+  const strength=g.hard?'<span class="bstrength hard">'+ic('ic-lock')+esc(t('bHard'))+'</span>':'<span class="bstrength">'+esc(t('bSoft'))+'<input type="range" class="rng sm" min="0" max="100" step="5" value="'+g.w+'" style="--fill:'+g.w+'%" data-bind="goalW" data-id="'+id+'"><span class="wv">'+g.w+'</span></span>';
+  return '<div class="goal'+(g.on?'':' off')+(g.hard?' hard':'')+(g.kind==='inject'?' inj':'')+'" data-gid="'+id+'">'+swBtn(g.on,'goalOn','data-id="'+id+'"',true)
+    +'<div class="gmain"><div class="gsent">'+s+'</div>'
+    +'<div class="bmeta">'+strength+'<span class="gmeta mono tiny">'+esc(meta)+'</span>'+prog+'<input class="inp bare bnote" data-bind="goalLabel" data-id="'+id+'" value="'+esc(g.label||'')+'" placeholder="'+esc(t('gLabelPh'))+'"></div></div>'
+    +'<div class="bacts"><button class="ibtn'+(g.hard?' on':'')+'" data-act="goalHard" data-id="'+id+'" title="'+esc(g.hard?t('bMakeSoft'):t('bMakeHard'))+'">'+ic('ic-lock')+'</button>'
+    +'<button class="ibtn" data-act="goalDup" data-id="'+id+'" title="'+esc(t('duplicate'))+'">'+ic('ic-copy')+'</button>'
+    +'<button class="ibtn" data-act="goalDel" data-id="'+id+'" title="'+esc(t('remove'))+'">'+ic('ic-trash')+'</button></div></div>';
+}
+const GOAL_TPL=['blank','person','pair','classes','weekly','places','inject','pick'];
 function recipeCard(ws,pdays,V,C){
   const sz=ws.sizing,mode=sz.mode;
   const need=M.goalNeed(ws),nOn=ws.goals.filter(g=>g.on).length;
@@ -237,7 +328,7 @@ function recipeCard(ws,pdays,V,C){
   const D=derive(),ok=D&&!A().isStale();
   const gi=D?D.goalIx:null;
   let h='<section class="card noprint" id="recipe-card"><div class="card-head"><div><div class="kicker">'+esc(t('kRecipe'))+'</div><h2 class="ctitle">'+esc(t('recipeT'))+'</h2></div>'
-    +'<div class="row">'+dd('preset','',"",[['once',t('pr_once')],['twice',t('pr_twice')],['crit',t('pr_crit')],['clear',t('pr_clear')]],{ph:t('presets'),cls:'ghostdd'})+'</div></div>';
+    +'<div class="row">'+dd('preset','',"",[['once',t('pr_once')],['twice',t('pr_twice')],['crit',t('pr_crit')],['fairp',t('pr_fairp')],['weekly',t('pr_weekly')],['clear',t('pr_clear')]],{ph:t('presets'),cls:'ghostdd'})+'</div></div>';
   h+='<div class="sizing"><div class="szq"><span class="lbl">'+esc(t('howMany'))+'</span><div class="seg">'+[['rhythm','sz_rhythm'],['total','sz_total'],['goals','sz_goals']].map(([k,l])=>'<button class="'+(mode===k?'on':'')+'" data-act="sizeMode" data-v="'+k+'">'+esc(t(l))+'</button>').join('')+'</div>'
     +(mode==='total'?'<span class="sznum"><input class="inp num" type="number" min="0" data-bind="sizeTotal" value="'+sz.total+'"></span>':'')+'</div>'
     +'<div class="szsum"><b class="bignum">'+V+'</b><span>'+esc(t('szSum',{d:pdays.filter(d=>d.n>0).length}))+'</span>'
@@ -245,21 +336,8 @@ function recipeCard(ws,pdays,V,C){
     +'<div class="szdays"><span class="lbl">'+esc(t('workDays'))+'</span>'+wdChips(ws.week.map(d=>d.on),'weekOn','')+'</div></div>';
   h+='<div class="goals"><div class="grouplbl">'+esc(t('goalsT'))+' <span class="muted mono tiny">'+esc(t('nPlannable',{n:nPl}))+'</span></div>';
   if(!ws.goals.length)h+='<div class="goal-empty">'+ic('ic-target')+'<span>'+esc(t('goalsEmpty'))+'</span></div>';
-  ws.goals.forEach(g=>{
-    const refOpts=goalRefOpts(g);
-    const set=M.goalSites(ws,g);const imp=g.per==='each'?set.length*g.n:g.n;
-    let prog='';
-    if(ok&&gi&&gi[g.id]){const x=gi[g.id];prog='<span class="gprog '+(x.met?'good':'bad')+'">'+ic(x.met?'ic-check':'ic-alert')+esc(x.txt)+'</span>'}
-    h+='<div class="goal'+(g.on?'':' off')+'">'+swBtn(g.on,'goalOn','data-id="'+g.id+'"',true)
-      +'<div class="gsent">'+dd('goal','data-id="'+g.id+'" data-f="per"',g.per,[['each',t('g_each')],['total',t('g_total')]])
-      +dd('goal','data-id="'+g.id+'" data-f="scope"',g.scope,[['all',t('g_allSites')],['cat',t('g_cat')],['loc',t('g_loc')],['tag',t('g_tag')],['crit',t('g_crit')],['site',t('g_site')]])
-      +(g.scope!=='all'?dd('goal','data-id="'+g.id+'" data-f="ref"',g.ref,refOpts,{search:refOpts.length>7,ph:refOpts.some(o=>o[0]===g.ref)?null:t('pick')}):'')
-      +'<span class="gw">'+esc(t('g_gets'))+'</span>'+dd('goal','data-id="'+g.id+'" data-f="op"',g.op,[['min',t('op_min')],['exact',t('op_exact')],['max',t('op_max')]])
-      +stepper('goalN','data-id="'+g.id+'"',g.n)+'<span class="gw">'+esc(t('visitsLbl').toLowerCase())+'</span></div>'
-      +'<span class="gmeta mono tiny">'+esc(g.per==='each'?t('g_sitesX',{n:set.length,v:imp}):t('g_sitesIn',{n:set.length}))+'</span>'+prog
-      +'<button class="ibtn" data-act="goalDel" data-id="'+g.id+'" title="'+esc(t('remove'))+'">'+ic('ic-trash')+'</button></div>';
-  });
-  h+='<button class="btn sm addgoal" data-act="goalAdd">'+ic('ic-plus')+esc(t('addGoal'))+'</button></div>'
+  ws.goals.forEach(g=>{h+=goalRow(g,ok&&gi?gi[g.id]:null)});
+  h+='<div class="row addgoal">'+dd('goalAdd','','',GOAL_TPL.map(k=>[k,t('gtpl_'+k),null,t('gtplD_'+k)]),{ph:'+ '+t('addGoal'),cls:'btn sm adddd'})+'</div></div>'
     +'<p class="quiet">'+ic('ic-info')+esc(t('recipeNote'))+'</p></section>';
   return h;
 }
@@ -311,7 +389,7 @@ function agendaHTML(D){
     vs.forEach(v=>{
       const vis=m.visits[v],s=D.siteOfV(v),cat=s?catOf(s.cat):null;
       const lockedS=!!ws.locks.sites[vis.key];
-      h+='<tr><td class="vnum">'+(vis.k+1)+'</td><td><button class="sitebtn" data-act="xvisit" data-v="'+v+'"><span class="fname">'+(s?esc(s.name):'<i class="muted">'+esc(t('open'))+'</i>')+(lockedS?' '+ic('ic-lock','pinic'):'')+'</span><span class="submeta">'+ctag(cat)+(s?'<span>'+r1(+s.km)+' '+unitL()+'</span>'+(s.zone?'<span>'+esc(s.zone)+'</span>':''):'')+'</span></button></td>';
+      h+='<tr'+(vis.inj?' class="injrow"':'')+'><td class="vnum">'+(vis.inj?ic('ic-pin','pinic'):(vis.k+1))+'</td><td><button class="sitebtn" data-act="xvisit" data-v="'+v+'"><span class="fname">'+(s?esc(s.name):'<i class="muted">'+esc(t('open'))+'</i>')+(lockedS?' '+ic('ic-lock','pinic'):'')+'</span><span class="submeta">'+ctag(cat)+(s?'<span>'+r1(+s.km)+' '+unitL()+'</span>'+(s.zone?'<span>'+esc(s.zone)+'</span>':''):'')+'</span></button></td>';
       roles.forEach((ro,ri)=>{
         let cell='';
         for(let z=vis.z0;z<vis.z0+vis.zn;z++){
@@ -509,6 +587,13 @@ function personRulesList(p){
     +(inh.length?'<div class="prules"><span class="tiny muted">'+esc(t('bInherited'))+'</span>'+inh.map(r=>tok(r,false)).join('')+'</div>':'')
     +'<div class="prules add"><span class="tiny muted">'+esc(t('bAddFor'))+'</span>'+[['site','ic-build','br_site'],['day','ic-cal','br_day'],['with','ic-users','br_with'],['count','ic-target','br_count']].map(([k,i,l])=>'<button class="btn sm ghost" data-act="bookForPerson" data-kind="'+k+'" data-id="'+esc(p.id)+'">'+ic(i)+esc(t(l))+'</button>').join('')+'</div>';
 }
+function personGoalsList(p){
+  const ws=A().ws,D=derive(),ok=D&&!A().isStale();
+  const mine=(ws.goals||[]).filter(g=>g.who.k!=='all'&&M.whoMatch(p,g.who));
+  return '<div class="prules">'+mine.map(g=>{const r=ok?D.goalIx[g.id]:null;return '<span class="token'+(g.on?'':' off')+(g.hard?' hard':'')+'">'+ic(g.kind==='inject'?'ic-pin':'ic-target')+esc(goalText(g))+(r?' <b class="'+(r.met?'okc':'badc')+'">'+esc(r.txt)+'</b>':'')+'<button data-act="goalGo" data-id="'+g.id+'" title="'+esc(t('edit'))+'">'+ic('ic-edit')+'</button></span>'}).join('')
+    +'<button class="btn sm ghost" data-act="goalForPerson" data-id="'+esc(p.id)+'" data-v="count">'+ic('ic-target')+esc(t('gtpl_person'))+'</button>'
+    +'<button class="btn sm ghost" data-act="goalForPerson" data-id="'+esc(p.id)+'" data-v="inject">'+ic('ic-pin')+esc(t('gtpl_inject'))+'</button></div>';
+}
 function tokenBox(list,act,id,field,opts,labelOf){
   let h='<div class="tokens">'+list.map(x=>'<span class="token">'+esc(labelOf(x))+'<button data-act="'+act+'" data-id="'+esc(id)+'" data-f="'+field+'" data-v="'+esc(x)+'">'+ic('ic-x')+'</button></span>').join('');
   const rest=opts.filter(o=>!list.includes(o.id));
@@ -558,6 +643,7 @@ function peopleView(){
         +'<div><span class="lbl">'+esc(t('gender'))+'</span><div class="seg">'+[['',t('g_none')],['m',t('g_m')],['f',t('g_f')]].map(([k,l])=>'<button class="'+((p.gender||'')===k?'on':'')+'" data-act="personGender" data-id="'+esc(p.id)+'" data-v="'+k+'">'+esc(l)+'</button>').join('')+'</div></div>'
         +'<div><span class="lbl">'+esc(t('ownPattern'))+'</span><div class="row" style="gap:8px">'+swBtn(p.runMax!=='','personPat','data-id="'+esc(p.id)+'"',true)
           +(p.runMax!==''?'<span class="sc tiny">'+esc(t('patWork'))+stepper('personRun','data-id="'+esc(p.id)+'" data-k="runMax"',p.runMax||'∞')+'</span><span class="sc tiny">'+esc(t('patRest'))+stepper('personRun','data-id="'+esc(p.id)+'" data-k="offMin"',p.offMin===''?0:p.offMin)+'</span>'+patternStrip(+p.runMax,p.offMin===''?1:+p.offMin):'<span class="muted tiny">'+esc(t('usesGlobal'))+'</span>')+'</div></div>'
+        +'<div class="span-all"><span class="lbl">'+esc(t('personGoals'))+'</span>'+personGoalsList(p)+'</div>'
         +'<div class="span-all"><span class="lbl">'+esc(t('personRules'))+'</span>'+personRulesList(p)+'</div>'
         +'</div></td></tr>';
     }
@@ -840,10 +926,8 @@ function mLabel1(m,isWho){
   const ws=A().ws;
   if(m.k==='all')return t(isWho?'bw_all':'bx_all');
   const nm=(arr,id)=>{const x=byId(arr,id);return x?x.name:'?'};
-  let v=m.v;
-  if(m.k==='person')v=nm(ws.people,m.v);else if(m.k==='role')v=nm(ws.roles,m.v);else if(m.k==='gender')v=t('g_'+m.v);
-  else if(m.k==='site')v=nm(ws.sites,m.v);else if(m.k==='cat')v=nm(ws.categories,m.v);else if(m.k==='loc'||m.k==='homeLoc')v=nm(ws.locations||[],m.v);
-  else if(m.k==='kmGe'||m.k==='kmLe')v=m.v+' '+unitL();
+  const one=x=>{if(m.k==='person')return nm(ws.people,x);if(m.k==='role')return nm(ws.roles,x);if(m.k==='gender')return t('g_'+x);if(m.k==='site')return nm(ws.sites,x);if(m.k==='cat')return nm(ws.categories,x);if(m.k==='loc'||m.k==='homeLoc')return nm(ws.locations||[],x);if(m.k==='kmGe'||m.k==='kmLe')return x+' '+unitL();return x};
+  let v=Array.isArray(m.v)?(m.v.length?(m.v.length>3?m.v.slice(0,3).map(one).join(' / ')+' +'+(m.v.length-3):m.v.map(one).join(' / ')):'?'):one(m.v);
   return (m.not?t('bNotW')+' ':'')+t((isWho?'bw_':'bx_')+m.k)+' '+v;
 }
 function ruleText(r){
@@ -957,10 +1041,11 @@ function eqDefs(){
       ['rest','t_restH',(st?'40000':'300')+' per breach',(st?'40000':'300')+'\\,n_{rest}'],
       ['distinct','t_distinct','2500 per duplicate','2500\\,n_{dup}'],
       ['bookH','t_bookH',(st?'40000':'5000')+' per must-rule breach',(st?'40000':'5000')+'\\,n_{must}'],
+      ['goalsH','t_goalsH',(st?'40000':'5000')+' per unit a must-goal is off (each bucket = place|all|person × plan|week)',(st?'40000':'5000')+'\\sum_{g,b}|\\mathrm{gap}_{g,b}|'],
       ['recencyH','t_recencyH',(st?'40000':'5000')+'·(1+short/min) per too-early revisit (when the minimum is a must)',(st?'40000':'5000')+'\\,(1+\\frac{m-g}{m})']
     ],
     soft:[
-      ['goals','goals','t_goals','Σ 120·w·short + 250·w·over','\\sum_g 120\\,w\\,\\mathrm{short}_g + 250\\,w\\,\\mathrm{over}_g'],
+      ['goals','goals','t_goals','Σ_g Σ_bucket w·w_g·(120·short + 250·over); count = visits | distinct places matching what ∧ who(any | k together) ∧ when','\\sum_g\\sum_b w\\,w_g\\big(120\\,\\mathrm{short}_{g,b} + 250\\,\\mathrm{over}_{g,b}\\big)'],
       ['recency','recency','t_recency','Σ_s w·(20+80·(min−gap)/min)[early] + 25·w·(gap−max)/max[late] + 120·w[overdue] + 30·w·(P−g)/P[same person]','\\sum_s w\\big(20+80\\tfrac{m-g}{m}\\big)[g<m] + 25\\,w\\tfrac{g-M}{M}[g>M] + 120\\,w\\,[\\mathrm{overdue}]'],
       ['book','book','t_book','Σ_r w_r·(1.2·[site/day] + 3·[avoid-with] − 0.8·[pair-with] + 2·team_gap + 2·count_gap)','\\sum_r w_r\\big(1.2\\,[\\mathrm{site/day}] + 3\\,[\\mathrm{avoid}] - 0.8\\,[\\mathrm{pair}] + 2\\,\\mathrm{team}_r + 2\\,\\mathrm{count}_r\\big)'],
       ['rank','rank','t_rank','Σ w·(4·def·(1.5+4·def) + 0.6·waste)','\\sum w\\big(4\\,\\delta(1.5+4\\delta) + 0.6\\,\\omega\\big)'],
@@ -1013,6 +1098,7 @@ function eqText(fmt){
   s+=t('hardT')+'\n';E.hard.forEach(x=>{s+='  '+pad(nm(x[1]),18)+pad(x[2],44)+val(x[0])+'\n'});
   s+='\n'+t('weightsT')+' (w = W/50)\n';E.soft.forEach(r=>{s+='  '+pad(nm(r[2]),18)+pad(ws.useW[r[1]]?'W='+ws.weights[r[1]]:t('off'),8)+pad(r[3],56)+val(r[0])+'\n'});
   if(bookRules.length)s+='\n'+t('bookT')+'\n'+bookRules.map(r=>'  • '+ruleText(r)+(M.isHard(r)?' [must]':' [w '+r.w+']')).join('\n')+'\n';
+  const gl=(ws.goals||[]).filter(g=>g.on);if(gl.length)s+='\n'+t('goalsT')+'\n'+gl.map(g=>'  • '+goalText(g)+(g.hard?' [must]':' [w '+g.w+']')).join('\n')+'\n';
   if(bd)s+='\nJ = '+fmtN(D.r.cost)+'\n';
   return s;
 }

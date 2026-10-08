@@ -232,6 +232,7 @@ function planRows(who){
   const m=D.m,rows=[];
   m.visits.forEach((vis,v)=>{
     const s=D.siteOfV(v),iso=m.days[vis.d].iso;
+    if(vis.opt&&!s)return;
     const team={};const all=[];
     m.roles.forEach(rid=>team[rid]=[]);
     for(let z=vis.z0;z<vis.z0+vis.zn;z++){if(!D.r.stats.active[z])continue;const st=m.seats[z];const p=D.personOfZ(z);const nm=p?p.name:'('+t('open')+')';team[m.roles[st.r]].push(nm);if(p)all.push(p.id)}
@@ -495,6 +496,7 @@ function paletteItems(q){
     {label:t('loadDataset'),kind:t('palCmd'),icon:'ic-layers',run:loadDataset},
     {label:t('pr_once'),kind:t('presets'),icon:'ic-target',run:()=>applyPreset('once')},
     {label:t('pr_twice'),kind:t('presets'),icon:'ic-target',run:()=>applyPreset('twice')},
+    ...['person','pair','classes','weekly','places','inject','pick'].map(k=>({label:t('gtpl_'+k),kind:t('goalsT'),icon:k==='inject'||k==='pick'?'ic-pin':'ic-target',run:()=>{APP.view='plan';render();addGoal(k)}})),
     {label:t('kbdT'),kind:t('palCmd'),icon:'ic-keyboard',run:()=>openModal(V.kbdModal())},
     {label:t('histUpload'),kind:t('tabHist'),icon:'ic-up',run:()=>tplUpload('history')},
     {label:t('histTplCsv'),kind:t('tabHist'),icon:'ic-file',run:()=>tplDownload('history','csv')},
@@ -574,7 +576,12 @@ function applyBind(bd,ds,v){
     case 'unit':commit(ws=>{ws.unit=v==='mi'?'mi':'km'},{solve:false});break;
     case 'expWho':expState.who=v;refreshExport();break;
     case 'siteLoc':APP.f.siteLoc=v;APP.f.sitePage=0;render();break;
-    case 'goal':commit(ws=>{const g=byId(ws.goals,ds.id);if(!g)return;g[ds.f]=v;if(ds.f==='scope'){g.ref=v==='crit'?'75':''}});break;
+    case 'goal':commit(ws=>{const g=byId(ws.goals,ds.id);if(!g)return;g[ds.f]=v;if(ds.f==='per'&&v==='person'&&g.who.k==='all')g.who={k:'role',v:[]};if(ds.f==='kind'&&v==='inject'&&g.what.k==='all')g.what={k:'site',v:[]};Object.assign(g,M.normGoal(g))});break;
+    case 'goalM':commit(ws=>{const g=byId(ws.goals,ds.id);if(!g)return;const side=ds.side;let m=g[side];if(ds.mi!=null&&m.more)m=m.more[+ds.mi];
+      if(ds.f==='k'){m.k=v;m.v=GOAL_DEF[v]!=null?GOAL_DEF[v]:(M.MULTI_K.includes(v)||v==='gender'?[]:'');if(v==='gender')m.v=['f'];if(v==='all'){m.not=false;if(m===g[side]){delete m.more;delete m.join}}}
+      else m.v=String(v);Object.assign(g,M.normGoal(g))});break;
+    case 'goalAddV':commit(ws=>{const g=byId(ws.goals,ds.id);if(!g)return;let m=g[ds.side];if(ds.mi!=null&&m.more)m=m.more[+ds.mi];const a=Array.isArray(m.v)?m.v:(m.v?[m.v]:[]);if(!a.includes(v))a.push(v);m.v=a});break;
+    case 'goalAdd':addGoal(v);break;
     case 'preset':applyPreset(v);break;
     case 'book':commit(ws=>{const r=byId(ws.book,ds.id);if(!r)return;const f=ds.f,side=ds.side;
       if(f==='rel'){r.rel=v;r.what=v==='day'?{k:'dow',v:[false,false,false,false,false,true,true]}:{k:'all',v:''};if(v==='count'){r.op='min';r.n=2;r.sense='prefer';r.per='plan'}if(v==='team'){r.op='max';r.n=1;r.sense='prefer'}}
@@ -587,6 +594,20 @@ function applyBind(bd,ds,v){
     case 'hAddSite':{const d=$('#hAddDate'),p=$('#hAddPeople');if(d)APP.f.hAddDate=d.value;if(p)APP.f.hAddPeople=p.value;APP.f.hAddSite=v;render();break}
     case 'route':commit(ws=>{const r=byId(ws.routes,ds.id);if(r){r[ds.f]=v;if(r.a===r.b)ws.routes=ws.routes.filter(x=>x!==r)}});break;
   }
+}
+const GOAL_DEF={rankGe:'75',rankLe:'25',critGe:'75',critLe:'25',kmGe:'40',kmLe:'15'};
+function addGoal(k,o){
+  const ws=APP.ws;const cat=(ws.categories.find(c=>c.planned)||{}).id||'';const p0=(ws.people.find(p=>p.active)||{}).id||'';const p1=(ws.people.filter(p=>p.active)[1]||{}).id||'';
+  const T={blank:{per:'each',op:'min',n:1},person:{per:'person',who:{k:'person',v:p0?[p0]:[]},what:{k:'all',v:''},op:'min',n:3},
+    pair:{per:'total',who:{k:'person',v:[p0,p1].filter(Boolean)},mode:'together',k:2,op:'min',n:2},
+    classes:{per:'total',what:{k:'cat',v:ws.categories.filter(c=>c.planned).slice(0,2).map(c=>c.id)},op:'min',n:10},
+    weekly:{per:'total',what:{k:'cat',v:cat?[cat]:[]},period:'week',op:'between',n:1,n2:3},
+    places:{per:'person',who:{k:'all',v:''},what:{k:'all',v:''},measure:'places',op:'min',n:3},
+    inject:{kind:'inject',what:{k:'site',v:[]},inject:{mode:'dates',dates:rangeOf(ws).start,n:1}},
+    pick:{kind:'inject',what:{k:'kmLe',v:'20'},when:{k:'dow',v:[false,false,false,false,true,false,false]},inject:{mode:'pick',n:2}}};
+  let id=null;commit(w=>{const g=M.mkGoal(Object.assign({},T[k]||T.blank,o||{}));w.goals.push(g);id=g.id});
+  setTimeout(()=>{const el=document.querySelector('[data-gid="'+id+'"]');if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1400)}},60);
+  return id;
 }
 async function restoreBook(){
   const url=(APP.ws.source&&APP.ws.source.url)||APP.config.dataset;
@@ -661,8 +682,10 @@ function applyRcPreset(k){
 function applyPreset(k){
   commit(ws=>{
     if(k==='clear'){ws.goals=[];ws.sizing.mode='rhythm';return}
-    if(k==='once'||k==='twice'){ws.goals=[M.mkGoal({per:'each',scope:'all',op:'min',n:k==='once'?1:2})];ws.sizing.mode='goals'}
-    if(k==='crit'){ws.goals.push(M.mkGoal({per:'each',scope:'crit',ref:'100',op:'min',n:2}));ws.goals.push(M.mkGoal({per:'each',scope:'crit',ref:'75',op:'min',n:1}))}
+    if(k==='once'||k==='twice'){ws.goals=ws.goals.filter(g=>!(g.kind==='count'&&g.per==='each'&&g.what.k==='all'));ws.goals.unshift(M.mkGoal({per:'each',op:'min',n:k==='once'?1:2}));ws.sizing.mode='goals'}
+    if(k==='crit'){ws.goals.push(M.mkGoal({per:'each',what:{k:'critGe',v:'100'},op:'min',n:2}));ws.goals.push(M.mkGoal({per:'each',what:{k:'critGe',v:'75',more:[{k:'critLe',v:'75'}],join:'and'},op:'min',n:1}))}
+    if(k==='fairp'){ws.goals.push(M.mkGoal({per:'person',who:{k:'all',v:''},what:{k:'all',v:''},measure:'places',op:'min',n:3}))}
+    if(k==='weekly'){const c=ws.categories.filter(x=>x.planned);c.forEach(x=>ws.goals.push(M.mkGoal({per:'total',what:{k:'cat',v:[x.id]},period:'week',op:'min',n:1})))}
   });
   toast(t('presetDone'));
 }
@@ -743,12 +766,25 @@ const act={
   loadDataset(){loadDataset()},
   sizeMode(b){commit(ws=>{ws.sizing.mode=b.dataset.v;if(b.dataset.v==='total'&&!ws.sizing.total)ws.sizing.total=M.planDays(ws).reduce((s,d)=>s+d.cfg.n,0)})},
   sizeTotal(b){commit(ws=>{ws.sizing.total=clamp(ws.sizing.total+ +b.dataset.d*(ws.sizing.total>=40?5:1),0,9999)},{co:'szt'})},
-  goalAdd(){commit(ws=>{ws.goals.push(M.mkGoal(ws.goals.length?{per:'total',scope:'cat',ref:(ws.categories.find(c=>c.planned)||{}).id||'',n:10}:{}))})},
-  goalDel(b){commit(ws=>{ws.goals=ws.goals.filter(g=>g.id!==b.dataset.id)})},
+  goalDel(b){armOr(b,'gd'+b.dataset.id,()=>commit(ws=>{ws.goals=ws.goals.filter(g=>g.id!==b.dataset.id)}))},
   goalOn(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(g)g.on=!g.on})},
-  goalN(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(g)g.n=clamp(g.n+ +b.dataset.d,0,9999)},{co:'gn'+b.dataset.id})},
+  goalN(b){const k=b.dataset.k||'n';commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(!g)return;const d=+b.dataset.d;
+    if(k==='injN')g.inject.n=clamp(g.inject.n+d,1,50);else if(k==='k')g.k=clamp(g.k+d,1,20);else if(k==='n2')g.n2=clamp(g.n2+d,g.n,9999);else{g.n=clamp(g.n+d,0,9999);if(g.n2<g.n)g.n2=g.n}},{co:'gn'+k+b.dataset.id})},
+  goalHard(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(g)g.hard=!g.hard})},
+  goalDup(b){commit(ws=>{const i=ws.goals.findIndex(g=>g.id===b.dataset.id);if(i<0)return;const c=M.normGoal(Object.assign(clone(ws.goals[i]),{id:''}));ws.goals.splice(i+1,0,c)})},
+  goalNot(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(!g)return;let m=g[b.dataset.side];if(b.dataset.mi!=null&&m.more)m=m.more[+b.dataset.mi];if(m&&m.k!=='all')m.not=!m.not})},
+  goalMore(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(!g)return;const m=g[b.dataset.side];m.more=m.more||[];m.join=m.join||'and';m.more.push(b.dataset.side==='who'?{k:'gender',v:['f'],not:false}:{k:'kmLe',v:'30',not:false})})},
+  goalLess(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(!g)return;const m=g[b.dataset.side];m.more.splice(+b.dataset.i,1);if(!m.more.length){delete m.more;delete m.join}})},
+  goalJoin(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(g){const m=g[b.dataset.side];m.join=m.join==='or'?'and':'or'}})},
+  goalDelV(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(!g)return;let m=g[b.dataset.side];if(b.dataset.mi!=null&&m.more)m=m.more[+b.dataset.mi];if(Array.isArray(m.v))m.v=m.v.filter(x=>x!==b.dataset.v)})},
+  goalWhen(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(!g)return;const v=b.dataset.v;g.when=v==='dow'?{k:'dow',v:[false,true,true,true,true,false,false]}:v==='dates'?{k:'dates',v:rangeOf(ws).start}:{k:'all',v:''}})},
+  goalDow(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(g&&g.when.k==='dow')g.when.v[+b.dataset.i]=!g.when.v[+b.dataset.i]})},
+  goalPeriod(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(g)g.period=b.dataset.v})},
+  goalInj(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(g)g.inject.mode=b.dataset.v})},
+  goalForPerson(b){const o=b.dataset.v==='inject'?{who:{k:'person',v:[b.dataset.id]}}:{who:{k:'person',v:[b.dataset.id]}};APP.view='plan';render();addGoal(b.dataset.v==='inject'?'inject':'person',o);toast(t('goalAdded'))},
+  goalGo(b){APP.view='plan';render();setTimeout(()=>{const el=document.querySelector('[data-gid="'+b.dataset.id+'"]');if(el){el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1400)}},60)},
   addLoc(){commit(ws=>{ws.locations.unshift(M.mkLoc(t('location')+' '+(ws.locations.length+1),0))});setTimeout(()=>{const i=$('#locations-card .locitem input');i&&(i.focus(),i.select())},30)},
-  delLoc(b){armOr(b,'dl'+b.dataset.id,()=>commit(ws=>{const id=b.dataset.id;ws.locations=ws.locations.filter(l=>l.id!==id);ws.sites.forEach(s=>{if(s.loc===id)s.loc=''});ws.people.forEach(p=>{if(p.homeLoc===id)p.homeLoc=''});ws.goals=ws.goals.filter(g=>!(g.scope==='loc'&&g.ref===id))}))},
+  delLoc(b){armOr(b,'dl'+b.dataset.id,()=>commit(ws=>{const id=b.dataset.id;ws.locations=ws.locations.filter(l=>l.id!==id);ws.sites.forEach(s=>{if(s.loc===id)s.loc=''});ws.people.forEach(p=>{if(p.homeLoc===id)p.homeLoc=''});ws.goals.forEach(g=>{if(g.what.k==='loc'&&Array.isArray(g.what.v))g.what.v=g.what.v.filter(x=>x!==id)})}))},
   pattern(b){commit(ws=>{ws.rules.runMax=+b.dataset.rm;ws.rules.offMin=+b.dataset.om})},
   rankGate(b){commit(ws=>{ws.rules.rankGate=b.dataset.v})},
   scopeLen(b){commit(ws=>{const r=rangeOf(ws);const n=clamp(M.diffDays(r.start,r.end)+1+ +b.dataset.d,1,366);ws.scope.end=addISO(r.start,n-1)},{co:'sl'})},
@@ -856,11 +892,13 @@ document.addEventListener('input',e=>{
   }
   if(el.type==='range'){
     const mn=+el.min,mx=+el.max;el.style.setProperty('--fill',((el.value-mn)/(mx-mn)*100)+'%');
-    const lab=el.nextElementSibling;if(lab)lab.textContent=bd==='weight'||bd==='bookW'?el.value:(+el.value).toFixed(2);
+    const lab=el.nextElementSibling;if(lab)lab.textContent=bd==='weight'||bd==='bookW'||bd==='goalW'?el.value:(+el.value).toFixed(2);
     return;
   }
   if(bd==='bookDates'){const id=el.dataset.id,v=el.value;commit(ws=>{const r=byId(ws.book,id);if(r&&r.what.k==='dates')r.what.v=v.slice(0,400)},{render:false,co:'bdt'+id});return}
   if(bd==='bookNote'){const id=el.dataset.id,v=el.value;commit(ws=>{const r=byId(ws.book,id);if(r)r.note=v.slice(0,160)},{render:false,solve:false,co:'bnote'+id});return}
+  if(bd==='goalLabel'){const id=el.dataset.id,v=el.value;commit(ws=>{const g=byId(ws.goals,id);if(g)g.label=v.slice(0,80)},{render:false,solve:false,co:'glab'+id});return}
+  if(bd==='goalWhenDates'||bd==='goalInjDates'){const id=el.dataset.id,v=el.value;commit(ws=>{const g=byId(ws.goals,id);if(!g)return;if(bd==='goalInjDates')g.inject.dates=v.slice(0,600);else if(g.when.k==='dates')g.when.v=v.slice(0,600)},{render:false,co:'gdt'+id});return}
   if((bd==='site'||bd==='person')&&(el.dataset.f==='name'||el.dataset.f==='zone')){
     const arr=bd==='site'?'sites':'people';const id=el.dataset.id,f=el.dataset.f,v=el.value;
     commit(ws=>{const x=byId(ws[arr],id);if(x)x[f]=v},{render:false,solve:f==='zone',co:'txt'+id+f});
@@ -895,7 +933,9 @@ document.addEventListener('change',e=>{
     case 'weight':{const k=el.dataset.k;commit(ws=>{ws.weights[k]=clamp(M.intOr(v,50),0,100)},{render:false});break}
     case 'bookW':{const id=el.dataset.id;commit(ws=>{const r=byId(ws.book,id);if(r)r.w=clamp(M.intOr(v,50),0,100)},{render:false});break}
     case 'bookNum':{const id=el.dataset.id,side=el.dataset.side,mi=el.dataset.mi;commit(ws=>{const r=byId(ws.book,id);if(!r)return;const m=mi!=null&&r[side].more?r[side].more[+mi]:r[side];m.v=String(Math.max(0,M.num(v,0)))});break}
-    case 'bookDates':render();break;
+    case 'bookDates':case 'goalWhenDates':case 'goalInjDates':case 'goalLabel':render();break;
+    case 'goalW':{const id=el.dataset.id;commit(ws=>{const g=byId(ws.goals,id);if(g)g.w=clamp(M.intOr(v,50),0,100)},{render:false});break}
+    case 'goalNum':{const id=el.dataset.id,side=el.dataset.side,mi=el.dataset.mi;commit(ws=>{const g=byId(ws.goals,id);if(!g)return;const m=mi!=null&&g[side].more?g[side].more[+mi]:g[side];m.v=String(Math.max(0,M.num(v,0)))});break}
     case 'routeKm':{const id=el.dataset.id;commit(ws=>{const r=byId(ws.routes,id);if(r)r.km=Math.max(0,M.num(v,0))});break}
     case 'bookNote':render();break;
     case 'unit':commit(ws=>{ws.unit=v==='mi'?'mi':'km'},{solve:false});break;

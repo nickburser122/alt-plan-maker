@@ -38,7 +38,7 @@ fetch('../data/complete_data.json').then(r=>r.json()).then(o=>{
   ds.goals=[M.mkGoal({per:'total',scope:'all',op:'exact',n:60}),M.mkGoal({per:'total',scope:'loc',ref:kd.id,op:'min',n:8}),M.mkGoal({per:'total',scope:'cat',ref:ds.categories[0].id,op:'min',n:20})];
   ds.sizing.mode='total';ds.sizing.total=60;
   const m=run('dataset 60 / 8 KD / 20 basic',ds);
-  log('groups '+JSON.stringify(m.r.stats.grpCnt));
+  log('goals '+JSON.stringify(m.r.stats.goalRes));
   ds.rules.runMax=2;ds.rules.offMin=1;run('dataset 2on1off',ds);
   ds.rules.runMax=1;ds.rules.offMin=1;ds.week=[0,1,2,3,4,5,6].map(i=>({on:i===6,n:i===6?2:0,focus:'auto'}));ds.sizing.mode='rhythm';ds.goals=[];run('dataset saturdays x2',ds);
   const rb=M.fromDataset(o,'rb');month(rb,2026,10);

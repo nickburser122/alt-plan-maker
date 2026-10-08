@@ -14,10 +14,34 @@ Bilingual (EN / العربية), deterministic, offline-first planner that build
 | `#insights` | KPIs, audit, mix, load, usage |
 | `#workspace` | Workspaces, snapshots, import/export, data file source |
 | `tests/engine-test.html` | Engine regression + dataset + rule tests |
+| `tests/goals-test.html` | Flexible goals: person, combination, never-together, multi-class, per-week between, distinct places, inject fixed/pick, when+who, max 0, coverage, templates, roundtrip, determinism, incremental = full cost (21 checks) |
+| `tests/goto-goals.html`, `goto-goals-ar.html`, `ui-goals-check.html` | Demo: seeds 6 sample goals and opens Plan (EN / AR); UI click-through check |
 | `tests/history-test.html` | Previous visits / revisit timing tests (parse, dedupe, range, random, per-category, per-place, round-trip) |
 | `tests/goto-history.html`, `goto-history-ar.html`, `goto-templates.html` | Demo: seed a sample history and open History / Workspace |
 
-## Previous visits & revisit timing (new)
+## Flexible goals (new)
+Every goal is one sentence built from independent parts. Any combination is valid:
+
+| Part | Options |
+|---|---|
+| **Kind** | `count` (a target on the plan) · `inject` (adds extra visits on top of the rhythm) |
+| **What** | any place matcher (all / place / category / location / type / criticality ≥≤ / distance ≥≤). **Several values in one picker = OR** (e.g. *Basic or Contracted*, *3 types*). `+` adds up to 3 extra conditions joined AND/OR, and **NOT** inverts a condition |
+| **Who** | everyone / person(s) / role(s) / gender / rank ≥≤ / home location (also multi-value, AND/OR, NOT). Mode: **any one of them** or **at least k of them together** |
+| **When** | any day / weekdays / dates (`2026-10-06, 2026-10-12..2026-10-15`) |
+| **Counted** | **each** place · **in total** · **each person** (in the who-group) |
+| **Period** | per plan · **per week** |
+| **Measure** | visits · **distinct places** |
+| **Op** | at least · exactly · at most · **between n–m** |
+| **Strength** | soft weight 0–100, or 🔒 **must** |
+
+Examples: *Abaza ≥ 3 visits to Contracted* · *Abaza + Amani together ≥ 2* (or `at most 0` 🔒 = never together) · *Basic or Contracted in total ≥ 20* · *Contracted 1–3 per week* · *each Financial member ≥ 3 distinct places* · *≥ 4 visits with a woman between 5–8 Oct* · *each Basic at most 0* (removes a class) · **Inject** *دار الشفا on 14 & 21 Oct with Amani* · **Inject** *2 visits within 20 km, solver picks the Thursday*.
+
+- **UI**: Plan → Recipe → `+ Add goal` (8 templates), presets (once / twice / critical / variety / weekly), each row shows live progress (`met/buckets` or `sum / target`). The person drawer (Team tab) lists goals that involve that person, with quick buttons to add one. The command palette (Ctrl K) has every template. Injected visits show 📌 in the agenda.
+- **JSON** (`ws.goals[]`, also `settings.goals` in the dataset, exported with names): `{kind, what:{k,v:[…],not,more,join}, who:{…}, mode:'any'|'together', k, when:{k:'all'|'dow'|'dates',v}, per:'each'|'total'|'person', period:'plan'|'week', measure:'visits'|'places', op:'min'|'max'|'exact'|'between', n, n2, hard, w, label, inject:{mode:'dates'|'pick', dates, n}}`. Old goals (`scope/ref`) are converted automatically.
+- **Solver**: each goal compiles to buckets (unit = place | all | person, × week). A visit contributes to a bucket when its place matches *what*, its day matches *when*, and its team satisfies *who* (≥ k matching members). Counts are kept **incrementally** (undoable deltas, so cost is O(changed visits)), and *distinct places* uses per-bucket place multiplicities. Cost per bucket is `w·w_g·(120·short + 250·over)`, or `5000|40000` per unit for must goals (term `goalsH`). A dedicated **goal-repair move** (10% of annealing moves) targets a violated bucket: it relocates a spare visit into the matching set, puts a required person on a matching visit, or removes an excess. Injected visits are restricted to their target set. *Pick* injections create optional candidate slots on the allowed days (an unused slot costs nothing), with an exact count goal on the slot group. `tests/goals-test.html` checks that incremental cost equals full recomputation.
+- **Pre-flight warnings**: goal matches no place / nobody / no day, injection outside the window, a person whose capacity is below their goal, k larger than the group, distinct-places target above the number of places.
+
+## Previous visits & revisit timing
 - **History list** (`ws.history`): `{date, site, people[], note, src: upload|plan|manual}`. Names that don't match are kept (`sn`, `pn`) and flagged "not in list". **Re-match names** links them later, for example after you add the facility.
 - **Sources**: upload a CSV / TSV / Excel (.xlsx/.xls/.ods) / JSON file; **Add current plan to history**; a snapshot's **→ history** button (earlier plans); quick-add one visit; `history:[{date,place,people[]}]` inside `complete_data.json`; or an optional `"history":"data/history.csv"` in `app-config.json`. Uploads merge, and duplicates (same date + place) are combined.
 - **Parsing**: English or Arabic headers (`date/التاريخ`, `place/المكان/المنشأة`, `people/الفريق`, or one column per role), ISO, `dd/mm/yyyy` or Excel serial dates, Arabic digits. People can be separated with `| ; , ،`.
@@ -60,6 +84,7 @@ The solver builds a greedy start, then runs simulated annealing and a polish pas
 All data is stored in the browser's localStorage (`mauvine.v2.*`). Rule JSON: `{rel: site|day|with|team|count, sense, who:{k,v,not?}, what:{k,v,not?}, op, n, per: plan|week, w, note}`. `data/app-config.json` sets the dataset path and the rule templates. There is no server or table API.
 
 ## Not yet / next
+- Goals: "spread" targets (e.g. visits evenly across weeks) and min-gap between a person's visits to the same goal set; goal priorities/tiers beyond soft-weight vs must.
 - Travel-time windows (routing uses km only).
 - Nested condition groups (one AND/OR level per side for now).
 - Revisit timing per person or role (right now it applies per place, plus one "same person" gap).
