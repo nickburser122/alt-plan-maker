@@ -6,7 +6,8 @@ const ic=V.ic;
 
 const APP={ix:null,prefs:{},ws:null,view:'plan',selDay:null,f:{},hist:{u:[],r:[],co:null,coT:0},solving:null,animate:false,issuesOpen:false};
 G.APP=APP;
-let compiledCache=null,saveT=null,solveT=null,pendingRender=false,jobId=0,worker=null;
+let compiledCache=null,saveT=null,solveT=null,pendingRender=false,jobId=0,worker=null,activeJob=null,lastViewKey=null,ignoreScrollUntil=0,pressing=false;
+const CANCELLED={cancelled:true};
 let workerOK=typeof Worker!=='undefined'&&location.protocol!=='file:';
 let pop=null,modal=null,armed=null,dpkState=null,colorTarget=null,expState=null,palState=null,eqState=null,jsonState=null;
 const CFG_DEFAULT={dataset:'data/complete_data.json',autoCheck:true,ruleTemplates:[]};
@@ -34,6 +35,10 @@ function saveNow(){
 function saveSoon(){clearTimeout(saveT);saveT=setTimeout(saveNow,350)}
 
 function isEditing(){const a=document.activeElement;return a&&a.closest&&a.closest('#main')&&/^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)&&a.type!=='range'&&a.type!=='search'}
+function syncDayChip(b,arr){
+  const x=byId(APP.ws[arr],b.dataset.id);if(!x||!b.isConnected)return;
+  const on=!!x.days[+b.dataset.i];b.classList.toggle('on',on);b.setAttribute('aria-pressed',on?'true':'false');
+}
 function renderSoft(){if(isEditing()||(pop&&(ddState||dpkState))){pendingRender=true;refreshChrome()}else render()}
 function refreshChrome(){
   I.setTerms(APP.ws.terms);
@@ -44,6 +49,36 @@ function refreshChrome(){
 }
 const VIEWFN={plan:'planView',sites:'sitesView',people:'peopleView',history:'historyView',rules:'rulesView',model:'modelView',insights:'insightsView',workspace:'workspaceView'};
 const VIEWS_ORDER=['plan','sites','people','history','rules','model','insights','workspace'];
+const KEY_ATTRS=['act','bind','id','f','i','r','c','k','v','iso','kind','row'];
+function ctrlSig(el){const o={tag:el.tagName.toLowerCase()};KEY_ATTRS.forEach(k=>{if(el.dataset[k]!=null)o[k]=el.dataset[k]});return o}
+function ctrlFind(host,o){let sel=o.tag;for(const k in o)if(k!=='tag')sel+='[data-'+k+'="'+CSS.escape(o[k])+'"]';return host.querySelector(sel)}
+function keepEls(host){return Array.from(host.querySelectorAll('[data-keep],#ribbon'))}
+function keepId(el){return el.dataset.keep||el.id}
+function captureView(host){
+  const st={sx:window.scrollX,sy:window.scrollY,keep:{},focus:null};
+  keepEls(host).forEach(el=>{st.keep[keepId(el)]={l:el.scrollLeft,t:el.scrollTop}});
+  const a=document.activeElement;
+  if(a&&a!==document.body&&host.contains(a)){
+    const f={sig:ctrlSig(a)};
+    try{if(typeof a.selectionStart==='number'){f.s=a.selectionStart;f.e=a.selectionEnd}}catch(e){}
+    st.focus=f;
+  }
+  return st;
+}
+function restoreView(host,st,same){
+  ignoreScrollUntil=performance.now()+120;
+  if(same){
+    keepEls(host).forEach(el=>{const k=st.keep[keepId(el)];if(k){el.scrollLeft=k.l;el.scrollTop=k.t}});
+    if(st.focus){
+      const el=ctrlFind(host,st.focus.sig);
+      if(el&&document.activeElement!==el){
+        el.focus({preventScroll:true});
+        if(st.focus.s!=null)try{el.setSelectionRange(st.focus.s,st.focus.e)}catch(e){}
+      }
+    }
+  }
+  window.scrollTo(st.sx,st.sy);
+}
 function render(){
   pendingRender=false;
   I.setTerms(APP.ws.terms);
@@ -53,17 +88,21 @@ function render(){
   $$('.view').forEach(v=>v.classList.toggle('on',v.id==='view-'+APP.view));
   if(location.hash.slice(1)!==APP.view)try{history.replaceState(null,'','#'+APP.view)}catch(e){}
   const host=$('#view-'+APP.view);
-  const sy=window.scrollY;
+  const key=APP.ws.id+'|'+APP.view+'|'+document.documentElement.dir;
+  const same=key===lastViewKey;lastViewKey=key;
+  const st=captureView(host);
   let html;
   if(!modal)V.DD.clear();
   try{html=V[VIEWFN[APP.view]]()}catch(e){console.error(e);html='<section class="card"><p>'+esc(String(e&&e.message||e))+'</p></section>'}
   host.innerHTML=html;
-  window.scrollTo(0,sy);
+  restoreView(host,st,same);
   $('#footHint').innerHTML=t('footHint');
   $('#footNote').textContent=t('footNote');
   if(APP.view==='plan'){const r=$('#ribbon'),s=r&&r.querySelector('.tile.sel');if(s&&r&&!APP._ribbonDone){r.scrollLeft=Math.max(0,s.offsetLeft-r.offsetLeft-80);APP._ribbonDone=true}}
   APP.animate=false;
 }
+function flushRender(){if(pendingRender&&!pressing&&!isEditing()&&!(pop&&(ddState||dpkState)))render()}
+document.addEventListener('scroll',()=>{if(performance.now()>ignoreScrollUntil)APP._userScrollAt=performance.now()},true);
 function applyLook(){
   const l=APP.prefs.lang==='ar'?'ar':'en';I.setLang(l);
   document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';
@@ -112,18 +151,24 @@ function warmFor(map){
   if(!siteOf.some(x=>x>=0))return null;
   return {siteOf,seatP};
 }
+function cancelSolve(){if(activeJob)activeJob.cancel();APP.solving=null}
 function runEngine(P,onProg){
   return new Promise((resolve,reject)=>{
+    if(activeJob)activeJob.cancel();
     const id=++jobId;
-    const fallback=()=>setTimeout(()=>{if(id!==jobId)return;try{resolve(G.MauvineEngine.solve(P))}catch(e){reject(e)}},20);
+    const job={id,done:false,w:null,timer:0,cancel(){if(job.done)return;job.done=true;clearTimeout(job.timer);if(job.w){try{job.w.terminate()}catch(e){}if(worker===job.w)worker=null}if(activeJob===job)activeJob=null;resolve(CANCELLED)}};
+    activeJob=job;
+    const settle=fn=>x=>{if(job.done)return;job.done=true;clearTimeout(job.timer);if(activeJob===job)activeJob=null;fn(x)};
+    const ok=settle(resolve),bad=settle(reject);
+    const fallback=()=>{job.timer=setTimeout(()=>{if(job.done)return;try{ok(G.MauvineEngine.solve(P))}catch(e){bad(e)}},20)};
     if(!workerOK)return fallback();
-    try{if(worker)worker.terminate();worker=new Worker('js/engine.js')}catch(e){workerOK=false;return fallback()}
-    worker.onmessage=e=>{const m=e.data;if(m.id!==id)return;
+    try{job.w=worker=new Worker('js/engine.js')}catch(e){workerOK=false;job.w=null;return fallback()}
+    job.w.onmessage=e=>{const m=e.data;if(job.done||m.id!==id)return;
       if(m.type==='progress')onProg(m.f);
-      else if(m.type==='done'){resolve(m.res)}
-      else if(m.type==='error')reject(new Error(m.msg));};
-    worker.onerror=e=>{e.preventDefault&&e.preventDefault();workerOK=false;worker=null;fallback()};
-    worker.postMessage({type:'solve',id,P});
+      else if(m.type==='done')ok(m.res);
+      else if(m.type==='error')bad(new Error(m.msg));};
+    job.w.onerror=e=>{if(job.done)return;e.preventDefault&&e.preventDefault();workerOK=false;if(worker===job.w)worker=null;try{job.w.terminate()}catch(x){}job.w=null;fallback()};
+    job.w.postMessage({type:'solve',id,P});
   });
 }
 async function solve(o){
@@ -139,12 +184,13 @@ async function solve(o){
   const t0=Date.now();
   try{
     const res=await runEngine(P,f=>{if(APP.solving){APP.solving.f=f;const st=$('#status');if(st)st.innerHTML=V.statusHTML()}});
+    if(res===CANCELLED)return;
     if(fpWithLocks(APP.ws)!==fp||APP.ws!==ws){APP.solving=null;scheduleSolve();return}
     ws.plan={fp,map:C.map,res,at:Date.now()};
     APP.solving=null;APP.animate=!o.quiet;
     saveSoon();
     if(!o.quiet){const n=res.issues.filter(x=>x.sev!=='info').length;toast(n?t('toastIssues',{n}):t('toastSolved'),n?'warn':'')}
-    renderSoft();
+    if(APP.view==='people'&&!APP.f.drawer&&V.patchPeople){refreshChrome();V.patchPeople()}else renderSoft();
   }catch(e){
     console.error(e);APP.solving=null;toast(t('solverErr'),'warn');render();
   }
@@ -154,7 +200,7 @@ function reroll(){
   solve({});
 }
 
-function closePop(){const had=!!(pop&&(ddState||dpkState));if(pop){pop.remove();pop=null}$$('.dpk-trigger.open,.dd.open').forEach(b=>b.classList.remove('open'));dpkState=null;colorTarget=null;ddState=null;if(had&&pendingRender)setTimeout(()=>{if(pendingRender&&!pop&&!isEditing())render()},0)}
+function closePop(){const had=!!(pop&&(ddState||dpkState));if(pop){pop.remove();pop=null}$$('.dpk-trigger.open,.dd.open').forEach(b=>b.classList.remove('open'));dpkState=null;colorTarget=null;ddState=null;if(had&&pendingRender)setTimeout(flushRender,0)}
 let ddState=null;
 function openDD(btn){
   const id=btn.dataset.dd;
@@ -343,7 +389,6 @@ function importRows(kind,rows){
   });
   toast(t('impDone',{n,k}),n?'':'warn');
 }
-/* ---- templates: rows (array of arrays) shared by CSV and Excel ---- */
 function tplRows(kind){
   const ws=APP.ws;
   if(kind==='locations'){const L=(ws.locations||[]).slice(0,2);return [['name','km']].concat(L.length?L.map(l=>[l.name,String(l.km)]):[['Central','0'],['North town','18']])}
@@ -368,7 +413,6 @@ function tplLists(kind){
   const n=Math.max(...cols.map(c=>c.length));const out=[];for(let i=0;i<n;i++)out.push(cols.map(c=>c[i]==null?'':c[i]));return out;
 }
 function csvTemplate(kind){return '\uFEFF'+tplRows(kind).map(M.csvRow).join('\r\n')}
-/* ---- Excel support (bundled SheetJS, loaded on demand) ---- */
 let xlsxP=null;
 function needXLSX(){
   if(G.XLSX)return Promise.resolve(G.XLSX);
@@ -452,6 +496,7 @@ $('#fileIn').addEventListener('change',e=>{
 
 function switchTo(w){
   saveNow();
+  cancelSolve();
   APP.ws=w;APP.hist={u:[],r:[],co:null,coT:0};APP.selDay=null;APP.f={};APP._ribbonDone=false;compiledCache=null;
   Store.save(w,APP.ix);
   closePop();closeModal();render();
@@ -704,7 +749,6 @@ async function loadDataset(keepView){
 }
 const act={
   palette:openPalette,undo,redo,
-  /* ---- revisit timing & history ---- */
   rcMode(b){commit(ws=>{ws.recency=M.normRecency(Object.assign({},ws.recency,{mode:b.dataset.v}))})},
   rcToggle(b){commit(ws=>{const r=M.normRecency(ws.recency);r[b.dataset.k]=!r[b.dataset.k];ws.recency=r})},
   rcFresh(b){commit(ws=>{ws.recency=M.normRecency(Object.assign({},ws.recency,{fresh:b.dataset.v}))})},
@@ -770,6 +814,7 @@ const act={
   ddPick(b){ddPick(+b.dataset.i)},
   loadDataset(){loadDataset()},
   sizeMode(b){commit(ws=>{ws.sizing.mode=b.dataset.v;if(b.dataset.v==='total'&&!ws.sizing.total)ws.sizing.total=M.planDays(ws).reduce((s,d)=>s+d.cfg.n,0)})},
+  sizeAllDays(){commit(ws=>{ws.sizing.useAllDays=!ws.sizing.useAllDays})},
   sizeTotal(b){commit(ws=>{ws.sizing.total=clamp(ws.sizing.total+ +b.dataset.d*(ws.sizing.total>=40?5:1),0,9999)},{co:'szt'})},
   goalDel(b){armOr(b,'gd'+b.dataset.id,()=>commit(ws=>{ws.goals=ws.goals.filter(g=>g.id!==b.dataset.id)}))},
   goalOn(b){commit(ws=>{const g=byId(ws.goals,b.dataset.id);if(g)g.on=!g.on})},
@@ -827,14 +872,14 @@ const act={
   siteCat(b){APP.f.siteCat=b.dataset.v;APP.f.sitePage=0;render()},
   sitePage(b){APP.f.sitePage=+b.dataset.p;render()},
   siteActive(b){commit(ws=>{const s=byId(ws.sites,b.dataset.id);s.active=!s.active})},
-  siteDay(b){commit(ws=>{const s=byId(ws.sites,b.dataset.id);s.days[+b.dataset.i]=!s.days[+b.dataset.i]})},
+  siteDay(b){commit(ws=>{const s=byId(ws.sites,b.dataset.id);s.days[+b.dataset.i]=!s.days[+b.dataset.i]},{render:false});syncDayChip(b,'sites')},
   siteBlackoutDel(b){commit(ws=>{const s=byId(ws.sites,b.dataset.id);s.blackout=s.blackout.filter(x=>x!==b.dataset.iso)})},
   delSite(b){armOr(b,'ds'+b.dataset.id,()=>commit(ws=>{const id=b.dataset.id;ws.sites=ws.sites.filter(s=>s.id!==id);ws.people.forEach(p=>{p.likes=p.likes.filter(x=>x!==id);p.bans=p.bans.filter(x=>x!==id)})}))},
   addPerson(){commit(ws=>{const fr=APP.f.peopleRole;const r=fr&&fr!=='all'?[fr]:(ws.roles[0]?[ws.roles[0].id]:[]);ws.people.unshift(M.mkPerson(t('person')+' '+(ws.people.length+1),r,{days:ws.week.map(d=>d.on)}))});APP.f.peopleQ='';render();setTimeout(()=>{const i=$('#view-people .ledger tbody input[data-f="name"]');i&&(i.focus(),i.select())},30)},
   peopleRole(b){APP.f.peopleRole=b.dataset.v;render()},
   personActive(b){commit(ws=>{const p=byId(ws.people,b.dataset.id);p.active=!p.active})},
   personRole(b){commit(ws=>{const p=byId(ws.people,b.dataset.id),r=b.dataset.r;p.roles=p.roles.includes(r)?p.roles.filter(x=>x!==r):p.roles.concat([r])})},
-  personDay(b){commit(ws=>{const p=byId(ws.people,b.dataset.id);p.days[+b.dataset.i]=!p.days[+b.dataset.i]})},
+  personDay(b){commit(ws=>{const p=byId(ws.people,b.dataset.id);p.days[+b.dataset.i]=!p.days[+b.dataset.i]},{render:false});syncDayChip(b,'people')},
   personOffDel(b){commit(ws=>{const p=byId(ws.people,b.dataset.id);p.off=p.off.filter(x=>x!==b.dataset.iso)})},
   drawer(b){APP.f.drawer=APP.f.drawer===b.dataset.id?null:b.dataset.id;render()},
   delPerson(b){armOr(b,'dp'+b.dataset.id,()=>commit(ws=>{const id=b.dataset.id;ws.people=ws.people.filter(p=>p.id!==id);ws.people.forEach(p=>{p.avoid=p.avoid.filter(x=>x!==id);p.pair=p.pair.filter(x=>x!==id)});for(const k in ws.locks.seats)if(ws.locks.seats[k]===id)delete ws.locks.seats[k]}))},
@@ -947,7 +992,11 @@ document.addEventListener('change',e=>{
     case 'term':case 'role':case 'cat':case 'wsName':render();break;
   }
 });
-document.addEventListener('focusout',()=>{setTimeout(()=>{if(pendingRender&&!isEditing())render()},0)});
+document.addEventListener('focusout',()=>{setTimeout(flushRender,0)});
+document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#main'))pressing=true},true);
+const endPress=()=>{if(!pressing)return;setTimeout(()=>{pressing=false;flushRender()},0)};
+document.addEventListener('pointerup',endPress,true);
+document.addEventListener('pointercancel',endPress,true);
 document.addEventListener('mouseover',e=>{
   const p=e.target.closest('[data-pid]');
   const cur=APP._hl;

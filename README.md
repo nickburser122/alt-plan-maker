@@ -16,6 +16,9 @@ Bilingual (EN / العربية), deterministic, offline-first planner that build
 | `tests/engine-test.html` | Engine regression + dataset + rule tests |
 | `tests/goals-test.html` | Flexible goals: person, combination, never-together, multi-class, per-week between, distinct places, inject fixed/pick, when+who, max 0, coverage, templates, roundtrip, determinism, incremental = full cost (21 checks) |
 | `tests/goto-goals.html`, `goto-goals-ar.html`, `ui-goals-check.html` | Demo: seeds 6 sample goals and opens Plan (EN / AR); UI click-through check |
+| `tests/regress-test.html` | Regressions: replacement budgeting, due-fresh recency cost, rest without a run limit, goal buffer sizing, empty-team rules |
+| `tests/alldays-test.html` | Use-every-enabled-day: setting policy, sizing modes, overrides, injections, conflicts, persistence, fingerprints (59 checks) |
+| `tests/ui-check.py` | Browser harness (Playwright): People table scroll/focus/popups in EN/AR × desktop/mobile, solver job lifecycle, all-days UI. `python3 tests/ui-check.py [people\|life\|alldays]` |
 | `tests/history-test.html` | Previous visits / revisit timing tests (parse, dedupe, range, random, per-category, per-place, round-trip) |
 | `tests/goto-history.html`, `goto-history-ar.html`, `goto-templates.html` | Demo: seed a sample history and open History / Workspace |
 
@@ -47,6 +50,25 @@ Examples: *Abaza ≥ 3 visits to Contracted* · *Abaza + Amani together ≥ 2* (
 - **How many** (solver-picks mode): `inject.op: exact|min|max|between` with `n`, `n2`.
 - **Extra or instead**: `inject.add: extra` (on top of the rhythm) or `replace` (takes the place of rhythm visits, so the plan total stays the same).
 - `tests/inject-test.html` checks these (6 checks).
+- **Replacement budget**: a `replace` injection removes `n × places` rhythm visits. A fixed-date replacement first takes them from its own day, then from the busiest other days; an optional (pick) replacement takes its lower bound from the candidate days first and then from the rest. Visits are never taken below an enabled day's single required visit when *Use every enabled day* is on. If there is not enough to replace, the plan shows a warning and keeps what could be replaced. With `between`, `at least` and `at most`, the realised total can differ from the plan total within the bounds.
+
+## Use every enabled day
+
+Plan → Recipe → **Use every enabled day** (`sizing.useAllDays`, off by default; old workspaces load with it off and their plans stay valid).
+
+- **Required day**: any day in the plan window that is enabled by the weekly rhythm or a date override. Disabled days and holidays are not required. An enabled day with a rhythm count of 0 is still required and gets one visit.
+- **Allocation**: every required day gets at least one ordinary visit, then the rest of the total is spread by the rhythm weights (all days weigh the same if every count is 0). Weekly rhythm raises each zero day to 1. *Fit the goals* raises the derived total to the number of required days. *Fixed total* is never raised: if the total is below the number of required days the plan shows a conflict and the extra days stay unscheduled.
+- **Injected visits**: a fixed injection on a disabled day is kept and does not make that day required. A mandatory injected visit counts as using its own day. Optional (pick) slots never count until they are actually scheduled.
+- **Checks**: before solving, days with no open place or with no staff for any open place are listed. After solving, a required day with no scheduled visit is an error, and one whose visits all have missing staff or unavailable people is shown as incomplete. The recipe card shows *Enabled days used: x / y*. Seats you pinned open on purpose and seats an exact-team injection leaves unused are not counted as missing.
+- Pins and locks are kept. The setting is part of the plan fingerprint only while it is on, so turning it on or off marks the plan stale.
+
+## Rules that were tightened
+
+- A rest requirement (minimum days off) is enforced even when the maximum days in a row is 0 (no limit): any break between work days shorter than the rest is flagged.
+- *Fresh places count as due* now also penalises never-visited places that are not scheduled at all, in the cost and in the issue list.
+- A minimum or exact team rule now also applies to a visit whose seats are all unfilled, so an empty visit is never cheaper than one staffed with the wrong people. Seats pinned open by the user stay exempt.
+- The people table keeps its horizontal and vertical scroll, focus and open popups through live solves, undo/redo and edits, and keeps the name column visible while scrolling.
+
 - **Solver**: a team-repair move (4% of annealing moves) puts a required person on an injected visit, or swaps out someone from outside the group when the mode is exact or only. With *exactly these people*, the leftover seats stay empty and are not counted as open. With *only from group*, the same applies only to roles the group has no one in.
 
 ### Fixes in this version

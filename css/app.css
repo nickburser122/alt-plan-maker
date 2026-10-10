@@ -188,6 +188,8 @@ html[dir="rtl"] .tile{width:66px}
 .tile .dw{display:block;font:600 9.5px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-400);white-space:nowrap}
 .tile .dn{display:block;font-family:var(--f-serif);font-weight:600;font-size:20px;line-height:1.15;margin-top:1px}
 .tile.off{opacity:.45;background:transparent}
+.tile.unused{background:transparent;border-style:dashed;border-color:var(--bad)}
+.tile.unused .dn{color:var(--ink-500)}
 .tile.off .dn{color:var(--ink-400);text-decoration:line-through;text-decoration-thickness:1px}
 .tile.sel{border-color:var(--primary);box-shadow:0 0 0 3px var(--focus-ring)}
 .tile.today .dw{color:var(--primary)}
@@ -312,6 +314,17 @@ html[data-theme="dusk"] .mcell .mb{color:color-mix(in srgb,var(--c) 30%,#fff);ba
 .ledger tr.inactive td:not(:last-child):not(:first-child){opacity:.45}
 .ledger .nm{min-width:170px}
 .ledger .nm .inp{width:100%}
+.ledger-people{border-collapse:separate;border-spacing:0;min-width:940px}
+.ledger-people th,.ledger-people td{border-bottom:1px solid var(--hairline)}
+.ledger-people th{border-bottom-color:var(--hairline-strong)}
+.ledger-people .idh,.ledger-people .idc{position:sticky;inset-inline-start:0;background:var(--bg-card);z-index:2;min-width:190px;max-width:260px}
+.ledger-people .idh{z-index:3}
+.ledger-people .idc::after,.ledger-people .idh::after{content:"";position:absolute;top:0;bottom:0;inset-inline-end:-7px;width:7px;pointer-events:none;background:linear-gradient(to right,var(--shadow-tint),transparent)}
+html[dir="rtl"] .ledger-people .idc::after,html[dir="rtl"] .ledger-people .idh::after{background:linear-gradient(to left,var(--shadow-tint),transparent)}
+.ledger-people .idcell{display:flex;align-items:center;gap:10px}
+.ledger-people .idcell .inp{flex:1;min-width:0}
+.ledger-people tr.inactive .idcell .inp{opacity:.45}
+.ledger-people tr.drawer td{border-bottom:1px solid var(--hairline)}
 .usebar{display:flex;align-items:center;gap:7px;min-width:84px}
 .bar{height:6px;border-radius:3px;background:var(--hairline);flex:1;min-width:40px;overflow:visible;position:relative}
 .bar i{display:block;height:100%;border-radius:3px;background:var(--c,var(--primary));width:0;transition:width .5s var(--ease);max-width:100%}
@@ -494,6 +507,14 @@ kbd{border:1px solid var(--hairline-strong);background:var(--bg-raised);border-r
 .szsum span{font-weight:600;font-size:13.5px}
 .szsum small{color:var(--ink-500);font-size:12px}
 .szdays{grid-column:1/-1;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.szall{grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding-top:12px;border-top:1px dashed var(--hairline-strong)}
+.szall .rl{flex:1;min-width:220px;font-weight:600;font-size:13.5px}
+.szall .rl small{display:block;font-weight:500;color:var(--ink-400);font-size:12px}
+.szuse{grid-column:1/-1;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}
+.szuse.good{color:var(--good)}
+.szuse.bad{color:var(--bad)}
+.szuse.pending{color:var(--ink-500)}
+.szuse .szdates{display:inline-flex;gap:8px;flex-wrap:wrap}
 .sznum .inp{width:80px}
 .goals{display:flex;flex-direction:column;gap:8px}
 .goal{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:start;padding:10px 12px;border:1px solid var(--hairline);border-radius:14px;background:var(--bg-raised);border-inline-start:3px solid var(--accent-soft);transition:opacity .15s}
@@ -660,7 +681,6 @@ details.hint[open] summary{color:var(--ink-700)}
 .droute .ic{width:12px;height:12px;color:var(--accent)}.droute b{font:600 11px var(--f-mono);color:var(--ink-700)}
 .eqbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 
-/* ---- History / revisit timing ---- */
 .rcmodes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
 .rcmode{display:flex;flex-direction:column;gap:4px;align-items:flex-start;text-align:start;border:1px solid var(--hairline);border-radius:14px;background:var(--bg-raised);padding:12px 13px;cursor:pointer;font:inherit;color:var(--ink-900);transition:all .15s var(--ease)}
 .rcmode b{font-size:14px}.rcmode small{color:var(--ink-500);font-size:12px;line-height:1.4}
@@ -752,3 +772,4 @@ i.rcjit{background:repeating-linear-gradient(45deg,transparent 0 4px,color-mix(i
   .sched,.mtx{min-width:0}
   .pill{border:1px solid #bbb!important;background:#fff!important;color:#000!important}
 }
+.tblwrap[data-keep="people"]{margin:0;padding:0}

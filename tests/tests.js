@@ -83,7 +83,6 @@ fetch('../data/complete_data.json').then(r=>r.json()).then(o=>{
   log('dates honored (bend→open expected): '+(bad5===0)+' ('+bad5+')');
   cr.book=[];cr.week=cr.week.map(d=>d.on?Object.assign(d,{n:3}):d);const c6=run('3/day routes',cr);
   log('dayRoute: '+JSON.stringify(c6.r.stats.dayRoute.slice(0,2))+' route cost '+(c6.r.breakdown.route||0).toFixed(2));
-  /* ---- revisit timing / previous visits (also standalone: history-test.html) ---- */
   if(window.HIST_ONLY===false)return;
   const hw=M.fromDataset(o,'hist');month(hw,2026,10);hw.book=[];hw.goals=[];
   const pl=M.plannable(hw);const recent=pl.slice(0,15),old=pl.slice(15,30);

@@ -1,5 +1,3 @@
-/* Opens the app in an iframe, seeds a demo visit history + revisit timing, and shows a tab.
-   Options: window.GOTO = {v:'history'|'workspace'|..., lang:'en'|'ar', mode:'range'|'min'|'random'} or #v=..&lang=.. */
 (function(){
 var q=new URLSearchParams(location.hash.slice(1));var G=window.GOTO||{};
 var opt=k=>G[k]||q.get(k);
