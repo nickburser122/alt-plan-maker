@@ -179,6 +179,7 @@ async function solve(o){
   const fp=fpWithLocks(ws);
   const P=Object.assign({},C.P);
   if(o.warm){const w=warmFor(C.map);if(w)P.warm=w}
+  if(o.round)P.round=o.round;
   APP.solving={f:0,id:jobId+1};
   refreshChrome();
   const t0=Date.now();
@@ -194,6 +195,13 @@ async function solve(o){
   }catch(e){
     console.error(e);APP.solving=null;toast(t('solverErr'),'warn');render();
   }
+}
+let searchRound=0,searchFp='';
+function keepSearching(){
+  const fp=fpWithLocks(APP.ws);
+  if(fp!==searchFp){searchFp=fp;searchRound=0}
+  searchRound++;
+  solve({warm:true,round:searchRound});
 }
 function reroll(){
   commit(ws=>{ws.engine.seed=((ws.engine.seed*1103515245+12345)>>>0)%99999989+1},{solve:false});
@@ -253,11 +261,11 @@ function closeModal(){if(modal){modal.remove();modal=null;document.documentEleme
 
 function explainAt(anchor,q){
   const D=V.derive();if(!D)return;
-  let res=null;
+  let res=null,tiers=null,proven=false;
   if(!APP.isStale()){
-    try{res=G.MauvineEngine.explain(APP.compiled().P,D.r,q)}catch(e){console.error(e)}
+    try{const P=APP.compiled().P;res=G.MauvineEngine.explain(P,D.r,q);tiers=G.MauvineEngine.tiersOf(P);if(q.seat!=null&&D.r.seatP[q.seat]<0)proven=(P.provenRoles||[]).indexOf(P.seatRole[q.seat])>=0}catch(e){console.error(e)}
   }
-  openPop(anchor,V.explainPop(Object.assign({res},q)));
+  openPop(anchor,V.explainPop(Object.assign({res,tiers,proven},q)));
 }
 
 function armOr(btn,key,fn){
@@ -532,6 +540,7 @@ function paletteItems(q){
   const cmds=[
     {label:t('solve'),kind:t('palCmd'),icon:'ic-wand',run:()=>solve({})},
     {label:t('reroll'),kind:t('palCmd'),icon:'ic-dice',run:reroll},
+    {label:t('keepSearch'),kind:t('palCmd'),icon:'ic-wand',run:keepSearching},
     {label:t('exportB'),kind:t('palCmd'),icon:'ic-down',run:openExport},
     {label:t('print'),kind:t('palCmd'),icon:'ic-print',run:doPrint},
     {label:t('copyReport'),kind:t('palCmd'),icon:'ic-copy',run:()=>V.derive()?copyText(reportText()):toast(t('noPlanYet'),'warn')},

@@ -1,0 +1,4 @@
+field month: V=26 Z=104 iters=97500x3 1496 ms 195521 moves/s cost=96.92 filled=97/97
+retail month: V=66 Z=198 iters=198000x3 3120 ms 190385 moves/s cost=264.81 filled=129/129
+care week: V=24 Z=48 iters=54000x3 768 ms 210938 moves/s cost=158.12 filled=36/36
+field quarter: V=80 Z=320 iters=300000x3 7316 ms 123018 moves/s cost=366.68 filled=299/299

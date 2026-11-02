@@ -11,6 +11,22 @@ function tour(st,dd,d0){const n=st.length;if(!n)return {km:0,ord:[]};if(n===1)re
 const GOALP=120,GOALX=250,RANKP=4;
 
 function mulberry32(a){return function(){a|=0;a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296}}
+function isort(a,n){for(let i=1;i<n;i++){const x=a[i];let j=i-1;while(j>=0&&a[j]>x){a[j+1]=a[j];j--}a[j+1]=x}}
+function hungarian(a,n,m){
+  const INF=1e18,u=new Float64Array(n+1),v=new Float64Array(m+1),p=new Int32Array(m+1),way=new Int32Array(m+1);
+  for(let i=1;i<=n;i++){
+    p[0]=i;let j0=0;const minv=new Float64Array(m+1).fill(INF),used=new Uint8Array(m+1);
+    do{
+      used[j0]=1;const i0=p[j0];let delta=INF,j1=0;
+      for(let j=1;j<=m;j++)if(!used[j]){const cur=a[i0-1][j-1]-u[i0]-v[j];if(cur<minv[j]){minv[j]=cur;way[j]=j0}if(minv[j]<delta){delta=minv[j];j1=j}}
+      for(let j=0;j<=m;j++){if(used[j]){u[p[j]]+=delta;v[j]-=delta}else minv[j]-=delta}
+      j0=j1;
+    }while(p[j0]!==0);
+    do{const j1=way[j0];p[j0]=p[j1];j0=j1}while(j0);
+  }
+  const res=new Int32Array(n);for(let j=1;j<=m;j++)if(p[j])res[p[j]-1]=j-1;
+  return res;
+}
 function emptyBd(){const o={};for(const k of TERMS)o[k]=0;return o}
 
 function Solver(P){
@@ -64,7 +80,7 @@ function Solver(P){
   let rcCost=0,rcBd=null;
   function rcCb(k,g,lim){
     let t;
-    if(k===0){if(rcHard){t=bookPen*(1+(lim-g)/Math.max(1,lim));rcCost+=t;if(rcBd)rcBd.recencyH+=t;return}t=Wr*(RCB+RCE*(lim-g)/Math.max(1,lim))}
+    if(k===0){if(rcHard){t=bookPen*(1+(lim-g)/Math.max(1,lim));rcCost+=t;addT(tB,t);if(rcBd)rcBd.recencyH+=t;return}t=Wr*(RCB+RCE*(lim-g)/Math.max(1,lim))}
     else if(k===1)t=Wr*RCL*Math.min(3,(g-lim)/Math.max(1,lim));
     else if(k===2)t=Wr*RCO;
     else t=Wr*RCO*.6;
@@ -73,6 +89,11 @@ function Solver(P){
   const teamBySite=new Array(S);for(let s=0;s<S;s++)teamBySite[s]=[];
   team.forEach((tr,ti)=>{for(let s=0;s<S;s++)if(tr.sm[s])teamBySite[s].push(ti)});
   let OPENW=OPEN;
+  const tiersOn=P.tiers!==false,KH=1e7,KI=100,TIE=1e-9;
+  const xH=+P.hung||0,xC=P.chain===undefined?.1:+P.chain||0,xD=+P.dswap||0,extraOn=xH>0||xC>0||xD>0,hotOn=!!P.hot,tourCache=P.tourCache!==false,tcache=new Map();
+  const tB=rules.strict?1:2,tG=rules.strict?1:2,tR=rules.strict?1:0;
+  let aH=0,aI=0,evH=0,evI=0,totH=0,totI=0,gHd=0,gHt=0;
+  const addT=(k,t)=>{if(k===1)aH+=t;else if(k===2)aI+=t};
 
   const cand=new Array(R*D);
   for(let r=0;r<R;r++)for(let d=0;d<D;d++){const a=[];for(const p of P.roleMembers[r])if(pAvail[p*D+d])a.push(p);cand[r*D+d]=a}
@@ -129,7 +150,7 @@ function Solver(P){
   }
   const sameC=(a,b)=>{if(a===b)return true;if(!a||!b||a.length!==b.length)return false;for(let i=0;i<a.length;i++)if(a[i]!==b[i])return false;return true};
   function gSync(){
-    if(!NQ)return 0;gEp++;gDirty.length=0;let any=false;
+    gHd=0;if(!NQ)return 0;gEp++;gDirty.length=0;let any=false;
     for(let i=0;i<dV.length;i++){
       const v=dV[i],o=vC[v]||EMPTY,n=contrib(v);if(sameC(o,n))continue;any=true;
       for(let j=0;j<o.length;j+=3)gAdd(o[j],o[j+1],o[j+2],-1);
@@ -137,7 +158,7 @@ function Solver(P){
       gUndo.push(0,v,o);vC[v]=n;
     }
     if(!any)return 0;let dl=0;
-    for(let i=0;i<gDirty.length;i+=2){const qi=gDirty[i],b=gDirty[i+1],o=gBc[qi][b],n=bCost(qi,b);if(n!==o){gUndo.push(1,qi*1048576+b,o);gBc[qi][b]=n;dl+=n-o}}
+    for(let i=0;i<gDirty.length;i+=2){const qi=gDirty[i],b=gDirty[i+1],o=gBc[qi][b],n=bCost(qi,b);if(n!==o){gUndo.push(1,qi*1048576+b,o);gBc[qi][b]=n;dl+=n-o;if(GQ[qi].hard)gHd+=n-o}}
     gtot+=dl;if(dl)gUndo.push(2,0,dl);
     return dl;
   }
@@ -151,7 +172,7 @@ function Solver(P){
     gtot=0;for(let qi=0;qi<NQ;qi++){gCnt[qi].fill(0);gBc[qi].fill(0);if(gPc[qi])gPc[qi].fill(0)}
     gEp++;gDirty.length=0;
     for(let v=0;v<V;v++){const n=contrib(v);vC[v]=n;for(let j=0;j<n.length;j+=3)gAdd(n[j],n[j+1],n[j+2],1)}
-    for(let qi=0;qi<NQ;qi++){const q=GQ[qi];for(let b=0;b<q.B;b++){const c=bCost(qi,b);gBc[qi][b]=c;gtot+=c}}
+    gHt=0;for(let qi=0;qi<NQ;qi++){const q=GQ[qi];for(let b=0;b<q.B;b++){const c=bCost(qi,b);gBc[qi][b]=c;gtot+=c;if(q.hard)gHt+=c}}
     gUndo.length=0;return gtot;
   }
   function goalFull(bd){
@@ -167,6 +188,8 @@ function Solver(P){
   const pDay=new Int32Array(N*D),catCount=new Float64Array(C);
   const pc=new Float64Array(N),vc=new Float64Array(V),sc=new Float64Array(S),dc=new Float64Array(D);
   const npc=new Float64Array(N),nvc=new Float64Array(V),nsc=new Float64Array(S),ndc=new Float64Array(D);
+  const pcH=new Float64Array(N),vcH=new Float64Array(V),scH=new Float64Array(S),dcH=new Float64Array(D),pcI=new Float64Array(N),vcI=new Float64Array(V),scI=new Float64Array(S),dcI=new Float64Array(D);
+  const npcH=new Float64Array(N),nvcH=new Float64Array(V),nscH=new Float64Array(S),ndcH=new Float64Array(D),npcI=new Float64Array(N),nvcI=new Float64Array(V),nscI=new Float64Array(S),ndcI=new Float64Array(D);
   let mixc=0,nmix=0,total=0;
   const stP=new Int32Array(N),stV=new Int32Array(V),stS=new Int32Array(S),stD=new Int32Array(D);
   let ep=1;const dP=[],dV=[],dS=[],dD=[];let mixD=false;
@@ -224,7 +247,7 @@ function Solver(P){
   function personCost(p,bd){
     const arr=pSeats[p],n=arr.length;let c=0,t;
     const dev=n-pTarget[p];t=1.5*W.fair*dev*dev;c+=t;if(bd)bd.fair+=t;
-    if(pMaxLoad[p]>=0&&n>pMaxLoad[p]){t=HARD*(n-pMaxLoad[p]);c+=t;if(bd)bd.hard+=t}
+    if(pMaxLoad[p]>=0&&n>pMaxLoad[p]){t=HARD*(n-pMaxLoad[p]);c+=t;aH+=t;if(bd)bd.hard+=t}
     const cl=cntBy[p];
     if(cl&&cl.length)c+=countCost(p,arr,n,bd);
     if(!n)return c;
@@ -236,44 +259,52 @@ function Solver(P){
       if(pref===1){t=2*W.pref*km/Dn;c+=t;if(bd)bd.pref+=t}
       else if(pref===2){t=2*W.pref*Math.max(0,1-km/Dn);c+=t;if(bd)bd.pref+=t}
       if(W.home){t=2*W.home*(pSiteD?pSiteD[p*S+s]:Math.abs(home-km))/Dn;c+=t;if(bd)bd.home+=t}
-      if(bkS){const j=p*S+s;if(bkSH[j]){t=bookPen*bkSH[j];c+=t;if(bd)bd.bookH+=t}if(bkS[j]){c+=bkS[j];if(bd)bd.book+=bkS[j]}}
+      if(bkS){const j=p*S+s;if(bkSH[j]){t=bookPen*bkSH[j];c+=t;addT(tB,t);if(bd)bd.bookH+=t}if(bkS[j]){c+=bkS[j];if(bd)bd.book+=bkS[j]}}
       if(pLast&&rcPD>0&&Wr){const g=dayNum[d]-pLast[p*S+s];if(g<rcPD){t=Wr*RCP*(rcPD-g)/rcPD;c+=t;if(bd)bd.recency+=t}}
       const a=aff[p*S+s];
       if(a===1){t=-1.5*W.likes;c+=t;if(bd)bd.likes+=t}
-      else if(a===2){c+=HARD;if(bd)bd.hard+=HARD}
-      if(!pAvail[base+d]){c+=HARD;if(bd)bd.hard+=HARD}
+      else if(a===2){c+=HARD;aH+=HARD;if(bd)bd.hard+=HARD}
+      if(!pAvail[base+d]){c+=HARD;aH+=HARD;if(bd)bd.hard+=HARD}
     }
-    const days=buf.subarray(0,n);if(n>1)days.sort();
+    const days=buf.subarray(0,n);if(n>1)isort(buf,n);
     const perDay=rules.perDay,rm=pRun[p],om=pOff[p],ideal=pIdeal[p],mw=pMaxWeek[p];
     let prev=-1,wk=-1,wc=0,run=0;
     for(let i=0;i<n;i++){
       const d=days[i];if(d===prev)continue;
       const cnt=pDay[base+d];
-      if(perDay>0&&cnt>perDay){t=HARD*(cnt-perDay);c+=t;if(bd)bd.hard+=t}
-      if(bkD){const j=base+d;if(bkDH[j]){t=bookPen*bkDH[j]*cnt;c+=t;if(bd)bd.bookH+=t}if(bkD[j]){t=bkD[j]*cnt;c+=t;if(bd)bd.book+=t}}
+      if(perDay>0&&cnt>perDay){t=HARD*(cnt-perDay);c+=t;aH+=t;if(bd)bd.hard+=t}
+      if(bkD){const j=base+d;if(bkDH[j]){t=bookPen*bkDH[j]*cnt;c+=t;addT(tB,t);if(bd)bd.bookH+=t}if(bkD[j]){t=bkD[j]*cnt;c+=t;if(bd)bd.book+=t}}
       if(prev>=0){
         const g=dayNum[d]-dayNum[prev];
         if(rm>0){
-          if(g===1){run++;if(run>rm){c+=restPen;if(bd)bd.rest+=restPen}}
-          else{run=1;if(g-1<om){c+=restPen;if(bd)bd.rest+=restPen}}
-        }else if(g>1&&g-1<om){c+=restPen;if(bd)bd.rest+=restPen}
+          if(g===1){run++;if(run>rm){c+=restPen;addT(tR,restPen);if(bd)bd.rest+=restPen}}
+          else{run=1;if(g-1<om){c+=restPen;addT(tR,restPen);if(bd)bd.rest+=restPen}}
+        }else if(g>1&&g-1<om){c+=restPen;addT(tR,restPen);if(bd)bd.rest+=restPen}
         if(ideal>0&&g<ideal){const x=(ideal-g)/ideal;t=2*W.spacing*x*x;c+=t;if(bd)bd.spacing+=t}
       }else run=1;
       if(mw>=0){
         const w=dayWeek[d];
-        if(w!==wk){if(wc>mw){t=HARD*(wc-mw);c+=t;if(bd)bd.hard+=t}wk=w;wc=0}
+        if(w!==wk){if(wc>mw){t=HARD*(wc-mw);c+=t;aH+=t;if(bd)bd.hard+=t}wk=w;wc=0}
         wc+=cnt;
       }
       prev=d;
     }
-    if(mw>=0&&wc>mw){t=HARD*(wc-mw);c+=t;if(bd)bd.hard+=t}
+    if(mw>=0&&wc>mw){t=HARD*(wc-mw);c+=t;aH+=t;if(bd)bd.hard+=t}
     if(W.route&&pSiteD&&n>1){
       let i=0;while(i<n){const d=days[i];let j=i;while(j<n&&days[j]===d)j++;
         if(j-i>1){const st=[];for(const z of arr){const v=seatVisit[z];if(vDay[v]===d&&siteOf[v]>=0)st.push(siteOf[v])}
-          if(st.length>1){let sep=0;for(const s of st)sep+=2*pSiteD[p*S+s];const tr=tour(st,(a,b)=>sDist[a*S+b],s=>pSiteD[p*S+s]);t=2*W.route*Math.max(0,tr.km-sep/st.length)/Dn;c+=t;if(bd)bd.route+=t}}
+          if(st.length>1){let sep=0;for(const s of st)sep+=2*pSiteD[p*S+s];const km=tourKm(p,st,bd);t=2*W.route*Math.max(0,km-sep/st.length)/Dn;c+=t;if(bd)bd.route+=t}}
         i=j}
     }
     return c;
+  }
+  function tourKm(p,st,bd){
+    if(bd||!tourCache||st.length>8)return tour(st,(a,b)=>sDist[a*S+b],s=>pSiteD[p*S+s]).km;
+    const k=st.slice().sort((a,b)=>a-b);let key=1;key=key*N+p;for(let i=0;i<k.length;i++)key=key*S+k[i];
+    if(!Number.isSafeInteger(key))return tour(st,(a,b)=>sDist[a*S+b],s=>pSiteD[p*S+s]).km;
+    let km=tcache.get(key);
+    if(km===undefined){km=tour(st,(a,b)=>sDist[a*S+b],s=>pSiteD[p*S+s]).km;if(tcache.size>200000)tcache.clear();tcache.set(key,km)}
+    return km;
   }
   function countCost(p,arr,n,bd){
     const cl=cntBy[p];let c=0,t;
@@ -281,43 +312,43 @@ function Solver(P){
       const cr=cnt[cl[q]];
       if(cr.per){
         cwk.fill(0);for(let i=0;i<n;i++){const z=arr[i],v=seatVisit[z],s=siteOf[v];if(s>=0&&cr.sm[s])cwk[dayWk[vDay[v]]]++}
-        for(let w=0;w<nWk;w++){const x=cntX(cr,cwk[w]);if(x>0){t=cr.hard?bookPen*x:cr.w*x;c+=t;if(bd){if(cr.hard)bd.bookH+=t;else bd.book+=t}}}
+        for(let w=0;w<nWk;w++){const x=cntX(cr,cwk[w]);if(x>0){t=cr.hard?bookPen*x:cr.w*x;c+=t;if(cr.hard)addT(tB,t);if(bd){if(cr.hard)bd.bookH+=t;else bd.book+=t}}}
       }else{
         let m=0;for(let i=0;i<n;i++){const s=siteOf[seatVisit[arr[i]]];if(s>=0&&cr.sm[s])m++}
-        const x=cntX(cr,m);if(x>0){t=cr.hard?bookPen*x:cr.w*x;c+=t;if(bd){if(cr.hard)bd.bookH+=t;else bd.book+=t}}
+        const x=cntX(cr,m);if(x>0){t=cr.hard?bookPen*x:cr.w*x;c+=t;if(cr.hard)addT(tB,t);if(bd){if(cr.hard)bd.bookH+=t;else bd.book+=t}}
       }
     }
     return c;
   }
   function visitCost(v,bd){
     const s=siteOf[v];let c=0,t;
-    if(s<0){if(vOpt[v])return 0;c+=NOSITE;if(bd)bd.coverage+=NOSITE;return c}
-    if(!sAvail[s*D+vDay[v]]){c+=HARD;if(bd)bd.hard+=HARD}
-    if(vSet[v]>=0&&!vsets[vSet[v]][s]){c+=HARD;if(bd)bd.goalsH+=HARD}
+    if(s<0){if(vOpt[v])return 0;c+=NOSITE;aI+=NOSITE;if(bd)bd.coverage+=NOSITE;return c}
+    if(!sAvail[s*D+vDay[v]]){c+=HARD;aH+=HARD;if(bd)bd.hard+=HARD}
+    if(vSet[v]>=0&&!vsets[vSet[v]][s]){c+=HARD;addT(tG,HARD);if(bd)bd.goalsH+=HARD}
     const z0=vSeat0[v],z1=z0+vSeatN[v];let k=0,unfilled=0;
     for(let z=z0;z<z1;z++){
       if(!seatAct[z])continue;
       const p=seatP[z];
-      if(p<0){if(seatLock[z]!==-1&&!openOk(v,z)){unfilled++;c+=OPENW;if(bd)bd.coverage+=OPENW}}
+      if(p<0){if(seatLock[z]!==-1&&!openOk(v,z)){unfilled++;c+=OPENW;aI+=OPENW;if(bd)bd.coverage+=OPENW}}
       else vbuf[k++]=p;
     }
     if(vReq[v]>=0){const rq=reqs[vReq[v]];let m=0;for(let i=0;i<k;i++)if(rq.pm[vbuf[i]])m++;
       const xo=rq.only?k-m:0;
-      if(m<rq.need||xo>0){const x=Math.max(0,rq.need-m)+xo;if(rq.hard){t=goalPen*x;c+=t;if(bd)bd.goalsH+=t}else{t=GOALP*Wg*Math.max(rq.wf,.5)*x;c+=t;if(bd)bd.goals+=t}}}
+      if(m<rq.need||xo>0){const x=Math.max(0,rq.need-m)+xo;if(rq.hard){t=goalPen*x;c+=t;addT(tG,t);if(bd)bd.goalsH+=t}else{t=GOALP*Wg*Math.max(rq.wf,.5)*x;c+=t;if(bd)bd.goals+=t}}}
     if(rankOn&&k>0){
       const cr=sCrit[s];let top=-1,lo=101;
       for(let i=0;i<k;i++){const rk=rankOf(vbuf[i],s);if(rk>top)top=rk;if(rk<lo)lo=rk;
         if(W.rank){const def=Math.max(0,cr-rk)/100,waste=Math.max(0,rk-cr-25)/100;t=RANKP*W.rank*(def*(1.5+def*4))+0.6*W.rank*waste;c+=t;if(bd)bd.rank+=t}}
-      if(rules.rankGate&&cr>0){const tol=rules.rankTol,ref=rules.rankGate===2?lo:top;if(ref<cr-tol){t=restPen*(1+(cr-tol-ref)/50);c+=t;if(bd)bd.rank+=t}}
+      if(rules.rankGate&&cr>0){const tol=rules.rankTol,ref=rules.rankGate===2?lo:top;if(ref<cr-tol){t=restPen*(1+(cr-tol-ref)/50);c+=t;addT(tR,t);if(bd)bd.rank+=t}}
     }
     if(k>1){
       const av=150*Math.max(W.pairs,.2),pr=-3*W.pairs;
       for(let i=0;i<k;i++)for(let j=i+1;j<k;j++){
         const a=vbuf[i],b=vbuf[j];
-        if(a===b){c+=HARD;if(bd)bd.hard+=HARD;continue}
+        if(a===b){c+=HARD;aH+=HARD;if(bd)bd.hard+=HARD;continue}
         const r=rel[a*N+b];
         if(r===1){c+=av;if(bd)bd.pairs+=av}else if(r===2){c+=pr;if(bd)bd.pairs+=pr}
-        if(bkP){const j=a*N+b;if(bkPH[j]){c+=bookPen;if(bd)bd.bookH+=bookPen}if(bkP[j]){c+=bkP[j];if(bd)bd.book+=bkP[j]}}
+        if(bkP){const j=a*N+b;if(bkPH[j]){c+=bookPen;addT(tB,bookPen);if(bd)bd.bookH+=bookPen}if(bkP[j]){c+=bkP[j];if(bd)bd.book+=bkP[j]}}
       }
     }
     const tl=teamBySite[s];
@@ -325,7 +356,7 @@ function Solver(P){
       for(let q=0;q<tl.length;q++){
         const tr=team[tl[q]];let m=0;for(let i=0;i<k;i++)if(tr.pm[vbuf[i]])m++;
         const x=teamX(tr,m);
-        if(x>0){t=tr.hard?bookPen*x:tr.w*x;c+=t;if(bd){if(tr.hard)bd.bookH+=t;else bd.book+=t}}
+        if(x>0){t=tr.hard?bookPen*x:tr.w*x;c+=t;if(tr.hard)addT(tB,t);if(bd){if(tr.hard)bd.bookH+=t;else bd.book+=t}}
       }
     }
     return c;
@@ -334,11 +365,11 @@ function Solver(P){
     const arr=sUses[s],u=arr.length;let c=0,t;
     const dev=u-sExp[s];t=1.2*W.rotate*dev*dev;c+=t;if(bd)bd.rotate+=t;
     if(sMin[s]>0&&u<sMin[s]){t=MINP*(sMin[s]-u);c+=t;if(bd)bd.bounds+=t}
-    if(sMax[s]>=0&&u>sMax[s]){t=HARD*(u-sMax[s]);c+=t;if(bd)bd.hard+=t}
+    if(sMax[s]>=0&&u>sMax[s]){t=HARD*(u-sMax[s]);c+=t;aH+=t;if(bd)bd.hard+=t}
     const gap=rules.siteGap;
     if(gap>0&&u>1){
       for(let i=0;i<u;i++)buf[i]=dayNum[vDay[arr[i]]];
-      const ds=buf.subarray(0,u);ds.sort();
+      const ds=buf.subarray(0,u);isort(buf,u);
       for(let i=1;i<u;i++){const g=ds[i]-ds[i-1];if(g>0&&g<gap){c+=GAPP;if(bd)bd.bounds+=GAPP}}
     }
     if(rcOn&&(u||rcFix[s].length||rcFresh)){rcCost=0;rcBd=bd||null;rcScan(s,rcCb);rcBd=null;c+=rcCost}
@@ -352,7 +383,7 @@ function Solver(P){
       const s=siteOf[vs[i]];if(s<0)continue;cnt++;
       const km=sKm[s];if(km<kmin)kmin=km;if(km>kmax)kmax=km;
       const zn=sZone[s];if(zn>=0&&zs.indexOf(zn)<0)zs.push(zn);
-      if(rules.distinct)for(let j=0;j<i;j++)if(siteOf[vs[j]]===s){c+=DUP;if(bd)bd.distinct+=DUP;break}
+      if(rules.distinct)for(let j=0;j<i;j++)if(siteOf[vs[j]]===s){c+=DUP;aH+=DUP;if(bd)bd.distinct+=DUP;break}
       if(f===-2){if(km>nk){t=4*W.focus*(km-nk)/Dn;c+=t;if(bd)bd.focus+=t}}
       else if(f===-3){if(km<nk){t=4*W.focus*(nk-km)/Dn;c+=t;if(bd)bd.focus+=t}}
       else if(f>=0&&sCat[s]!==f){t=6*W.focus;c+=t;if(bd)bd.focus+=t}
@@ -371,13 +402,15 @@ function Solver(P){
     if(bd)bd.mix+=c;return c;
   }
   function fullCost(){
-    total=0;
-    for(let p=0;p<N;p++){pc[p]=personCost(p);total+=pc[p]}
-    for(let v=0;v<V;v++){vc[v]=visitCost(v);total+=vc[v]}
-    for(let s=0;s<S;s++){sc[s]=siteCost(s);total+=sc[s]}
-    for(let d=0;d<D;d++){dc[d]=dayCost(d);total+=dc[d]}
+    total=0;totH=0;totI=0;
+    for(let p=0;p<N;p++){aH=0;aI=0;pc[p]=personCost(p);pcH[p]=aH;pcI[p]=aI;total+=pc[p];totH+=aH;totI+=aI}
+    for(let v=0;v<V;v++){aH=0;aI=0;vc[v]=visitCost(v);vcH[v]=aH;vcI[v]=aI;total+=vc[v];totH+=aH;totI+=aI}
+    for(let s=0;s<S;s++){aH=0;aI=0;sc[s]=siteCost(s);scH[s]=aH;scI[s]=aI;total+=sc[s];totH+=aH;totI+=aI}
+    for(let d=0;d<D;d++){aH=0;aI=0;dc[d]=dayCost(d);dcH[d]=aH;dcI[d]=aI;total+=dc[d];totH+=aH;totI+=aI}
     mixc=mixCost();total+=mixc;
     total+=gInit();
+    if(tG===1)totH+=gHt;else if(tG===2)totI+=gHt;
+    if(hotOn)hotRebuild();
     return total;
   }
   function breakdown(){
@@ -389,30 +422,42 @@ function Solver(P){
     mixCost(bd);goalFull(bd);return bd;
   }
   function evalDelta(){
-    let dl=0;
-    for(let i=0;i<dP.length;i++){const p=dP[i],x=personCost(p);npc[p]=x;dl+=x-pc[p]}
-    for(let i=0;i<dV.length;i++){const v=dV[i],x=visitCost(v);nvc[v]=x;dl+=x-vc[v]}
-    for(let i=0;i<dS.length;i++){const s=dS[i],x=siteCost(s);nsc[s]=x;dl+=x-sc[s]}
-    for(let i=0;i<dD.length;i++){const d=dD[i],x=dayCost(d);ndc[d]=x;dl+=x-dc[d]}
+    let dl=0,dh=0,di=0;
+    for(let i=0;i<dP.length;i++){const p=dP[i];aH=0;aI=0;const x=personCost(p);npc[p]=x;npcH[p]=aH;npcI[p]=aI;dl+=x-pc[p];dh+=aH-pcH[p];di+=aI-pcI[p]}
+    for(let i=0;i<dV.length;i++){const v=dV[i];aH=0;aI=0;const x=visitCost(v);nvc[v]=x;nvcH[v]=aH;nvcI[v]=aI;dl+=x-vc[v];dh+=aH-vcH[v];di+=aI-vcI[v]}
+    for(let i=0;i<dS.length;i++){const s=dS[i];aH=0;aI=0;const x=siteCost(s);nsc[s]=x;nscH[s]=aH;nscI[s]=aI;dl+=x-sc[s];dh+=aH-scH[s];di+=aI-scI[s]}
+    for(let i=0;i<dD.length;i++){const d=dD[i];aH=0;aI=0;const x=dayCost(d);ndc[d]=x;ndcH[d]=aH;ndcI[d]=aI;dl+=x-dc[d];dh+=aH-dcH[d];di+=aI-dcI[d]}
     if(mixD){nmix=mixCost();dl+=nmix-mixc}
     dl+=gSync();
+    if(tG===1)dh+=gHd;else if(tG===2)di+=gHd;
+    evH=dh;evI=di;
     return dl;
   }
   function commit(dl){
-    for(let i=0;i<dP.length;i++)pc[dP[i]]=npc[dP[i]];
-    for(let i=0;i<dV.length;i++)vc[dV[i]]=nvc[dV[i]];
-    for(let i=0;i<dS.length;i++)sc[dS[i]]=nsc[dS[i]];
-    for(let i=0;i<dD.length;i++)dc[dD[i]]=ndc[dD[i]];
+    for(let i=0;i<dP.length;i++){const p=dP[i];pc[p]=npc[p];pcH[p]=npcH[p];pcI[p]=npcI[p]}
+    for(let i=0;i<dV.length;i++){const v=dV[i];vc[v]=nvc[v];vcH[v]=nvcH[v];vcI[v]=nvcI[v]}
+    for(let i=0;i<dS.length;i++){const s=dS[i];sc[s]=nsc[s];scH[s]=nscH[s];scI[s]=nscI[s]}
+    for(let i=0;i<dD.length;i++){const d=dD[i];dc[d]=ndc[d];dcH[d]=ndcH[d];dcI[d]=ndcI[d]}
     if(mixD)mixc=nmix;
     gUndo.length=0;
-    total+=dl;
+    total+=dl;totH+=evH;totI+=evI;
+    if(hotOn){for(let i=0;i<dP.length;i++){const p=dP[i];hotSet(hotP,hotPpos,p,pcH[p]+pcI[p]>TIE)}for(let i=0;i<dV.length;i++){const v=dV[i];hotSet(hotV,hotVpos,v,vcH[v]+vcI[v]>TIE)}}
   }
-  function probe(fn){fn();if(!log.length){clear();return 0}const dl=evalDelta();undo();clear();return dl}
-  function apply(fn){fn();if(!log.length){clear();return 0}const dl=evalDelta();commit(dl);clear();return dl}
+  const hotP=[],hotPpos=new Int32Array(N).fill(-1),hotV=[],hotVpos=new Int32Array(V).fill(-1);
+  function hotSet(arr,pos,i,on){const k=pos[i];if(on){if(k<0){pos[i]=arr.length;arr.push(i)}}else if(k>=0){const last=arr.pop();if(last!==i){arr[k]=last;pos[last]=k}pos[i]=-1}}
+  function hotRebuild(){
+    hotP.length=0;hotV.length=0;hotPpos.fill(-1);hotVpos.fill(-1);
+    for(let p=0;p<N;p++)hotSet(hotP,hotPpos,p,pcH[p]+pcI[p]>TIE);
+    for(let v=0;v<V;v++)hotSet(hotV,hotVpos,v,vcH[v]+vcI[v]>TIE);
+  }
+  const keyOf=dl=>tiersOn?evH*KH+evI*KI+(dl-evH-evI):dl;
+  const lexLess=(h,i,t,bh,bi,bt)=>h<bh-TIE||(h<=bh+TIE&&(i<bi-TIE||(i<=bi+TIE&&t<bt-1e-9)));
+  function probe(fn){fn();if(!log.length){clear();return 0}const dl=evalDelta();undo();clear();return keyOf(dl)}
+  function apply(fn){fn();if(!log.length){clear();return 0}const dl=evalDelta();commit(dl);clear();return keyOf(dl)}
   function attempt(fn,T){
     fn();if(!log.length){clear();return false}
-    const dl=evalDelta();
-    if(dl<=0||(T>0&&dl<T*30&&rnd()<Math.exp(-dl/T))){commit(dl);clear();return true}
+    const dl=evalDelta(),k=keyOf(dl);
+    if(k<=0||(T>0&&k<T*30&&rnd()<Math.exp(-k/T))){commit(dl);clear();return true}
     undo();clear();return false;
   }
   function inVisit(v,q){const z0=vSeat0[v],z1=z0+vSeatN[v];for(let z=z0;z<z1;z++)if(seatP[z]===q)return true;return false}
@@ -441,6 +486,16 @@ function Solver(P){
   let openHint=true;
   function hasOpen(){for(let i=0;i<freeSeats.length;i++){const z=freeSeats[i];if(seatAct[z]&&seatP[z]<0)return true}return false}
   function pickSeat(){
+    if(hotOn&&(hotP.length||hotV.length)&&rnd()<.35){
+      if(hotV.length&&(!hotP.length||rnd()<.5)){
+        const v=hotV[(rnd()*hotV.length)|0],z0=vSeat0[v];let pick=-1;
+        for(let k=0;k<vSeatN[v];k++){const z=z0+((rnd()*vSeatN[v])|0);if(seatAct[z]&&seatLock[z]===-2){pick=z;if(seatP[z]<0)break}}
+        if(pick>=0)return pick;
+      }else if(hotP.length){
+        const p=hotP[(rnd()*hotP.length)|0],arr=pSeats[p];
+        if(arr.length){const z=arr[(rnd()*arr.length)|0];if(seatLock[z]===-2)return z}
+      }
+    }
     if(openHint&&rnd()<.3){
       const n=freeSeats.length,st=(rnd()*n)|0;
       for(let i=0;i<n;i++){const z=freeSeats[(st+i)%n];if(seatAct[z]&&seatP[z]<0)return z}
@@ -463,7 +518,7 @@ function Solver(P){
   }
   function mvSwap(){
     if(!freeSeats.length)return;
-    const za=freeSeats[(rnd()*freeSeats.length)|0];if(!seatAct[za])return;
+    const za=hotOn?pickSeat():freeSeats[(rnd()*freeSeats.length)|0];if(!seatAct[za])return;
     const list=seatsByRole[seatRole[za]];const zb=list[(rnd()*list.length)|0];
     if(zb===za||!seatAct[zb])return;
     const va=seatVisit[za],vb=seatVisit[zb];if(va===vb)return;
@@ -472,6 +527,66 @@ function Solver(P){
     if(pb>=0&&(!pAvail[pb*D+da]||inVisit(va,pb)))return;
     if(pa>=0&&(!pAvail[pa*D+db]||inVisit(vb,pa)))return;
     opSeat(za,pb);opSeat(zb,pa);
+  }
+  const seatsRD=new Map();
+  for(const z of freeSeats){const k=seatRole[z]*D+vDay[seatVisit[z]];let a=seatsRD.get(k);if(!a){a=[];seatsRD.set(k,a)}a.push(z)}
+  const FORBID=1e12,HMAX=8;
+  function mvHung(){
+    if(!freeSeats.length)return;
+    const z0=pickSeat();if(!seatAct[z0])return;
+    const d=vDay[seatVisit[z0]],r=seatRole[z0];
+    let group=(seatsRD.get(r*D+d)||[]).filter(z=>seatAct[z]);
+    if(group.length<2)return;
+    const cs=cand[r*D+d];if(!cs.length)return;
+    if(group.length>HMAX){const st=(rnd()*group.length)|0;group=group.slice(st).concat(group.slice(0,st)).slice(0,HMAX)}
+    const n=group.length,m=cs.length+n,old=group.map(z=>seatP[z]);
+    apply(()=>{for(const z of group)opSeat(z,-1)});
+    const mat=[];
+    for(let i=0;i<n;i++){
+      const z=group[i],v=seatVisit[z],row=new Float64Array(m);
+      for(let j=0;j<cs.length;j++){const q=cs[j];row[j]=inVisit(v,q)?FORBID:probe(()=>opSeat(z,q))}
+      mat.push(row);
+    }
+    const asg=hungarian(mat,n,m),sol=group.map((z,i)=>asg[i]<cs.length&&mat[i][asg[i]]<FORBID?cs[asg[i]]:-1);
+    let pick=old;
+    if(!sol.every((q,i)=>q===old[i])){
+      const dNew=probe(()=>{for(let i=0;i<n;i++)opSeat(group[i],sol[i])});
+      const dOld=probe(()=>{for(let i=0;i<n;i++)opSeat(group[i],old[i])});
+      if(dNew<dOld-1e-9)pick=sol;
+    }
+    apply(()=>{for(let i=0;i<n;i++)opSeat(group[i],pick[i])});
+  }
+  mvHung.self=true;
+  function mvChain(){
+    if(!freeSeats.length)return;
+    const z=pickSeat();if(!seatAct[z])return;
+    const v=seatVisit[z],d=vDay[v],r=seatRole[z],cs=cand[r*D+d];if(!cs.length)return;
+    const q=cs[(rnd()*cs.length)|0],o=seatP[z];
+    if(q===o||inVisit(v,q))return;
+    let zc=-1,bg=1e9;
+    const arr=pSeats[q],win=Math.max(1,P.pOff?P.pOff[q]+1:1);
+    for(let i=0;i<arr.length;i++){const y=arr[i];if(seatLock[y]!==-2)continue;const g=Math.abs(dayNum[vDay[seatVisit[y]]]-dayNum[d]);if(g<=win&&g<bg){bg=g;zc=y}}
+    opSeat(z,q);
+    if(zc<0)return;
+    const vc=seatVisit[zc],dc=vDay[vc],cc=cand[seatRole[zc]*D+dc];
+    let q2=-1;
+    if(o>=0&&o!==q&&seatRole[zc]===r&&pAvail[o*D+dc]&&!inVisit(vc,o))q2=o;
+    else for(let k=0;k<8&&cc.length;k++){const c=cc[(rnd()*cc.length)|0];if(c===q||inVisit(vc,c))continue;q2=c;if(!pDay[c*D+dc])break}
+    opSeat(zc,q2);
+  }
+  function mvDaySwap(){
+    if(freeNorm.length<2)return;
+    const v1=freeNorm[(rnd()*freeNorm.length)|0],v2=freeNorm[(rnd()*freeNorm.length)|0];
+    const d1=vDay[v1],d2=vDay[v2];if(d1===d2)return;
+    const s1=siteOf[v1],s2=siteOf[v2];if(s1<0||s2<0)return;
+    if(!sAvail[s2*D+d1]||!sAvail[s1*D+d2])return;
+    const team=v=>{const out=[];for(let z=vSeat0[v];z<vSeat0[v]+vSeatN[v];z++){if(seatLock[z]>=0)return null;if(seatAct[z]&&seatP[z]>=0)out.push([seatRole[z],seatP[z]])}return out};
+    const t1=team(v1),t2=team(v2);if(!t1||!t2||(!t1.length&&!t2.length))return;
+    for(const [,p] of t1)if(!pAvail[p*D+d2])return;
+    for(const [,p] of t2)if(!pAvail[p*D+d1])return;
+    opSite(v1,s2);opSite(v2,s1);
+    const put=(v,team)=>{const used=new Set();for(const [r,p] of team){for(let z=vSeat0[v];z<vSeat0[v]+vSeatN[v];z++){if(seatAct[z]&&seatLock[z]===-2&&seatRole[z]===r&&seatP[z]<0&&!inVisit(v,p)){opSeat(z,p);break}}}fillNew(v)};
+    put(v1,t2);put(v2,t1);
   }
   function mvRelocate(){
     if(!freeVisits.length)return;
@@ -485,6 +600,12 @@ function Solver(P){
   }
   const pRole0=new Uint8Array(N*R);for(let r=0;r<R;r++)for(const p of P.roleMembers[r])pRole0[p*R+r]=1;
   function seatFor(p,v){const z0=vSeat0[v],z1=z0+vSeatN[v];let best=-1;for(let z=z0;z<z1;z++){if(!seatAct[z]||seatLock[z]!==-2||!pRole0[p*R+seatRole[z]])continue;if(seatP[z]<0)return z;if(best<0||rnd()<.5)best=z}return best}
+  const qVis=new Map();
+  function gVisit(q){
+    if(!hotOn)return freeVisits[(rnd()*freeVisits.length)|0];
+    let a=qVis.get(q);if(!a){a=freeVisits.filter(v=>q.dm[vDay[v]]);qVis.set(q,a)}
+    return a.length?a[(rnd()*a.length)|0]:freeVisits[(rnd()*freeVisits.length)|0];
+  }
   function mvGoal(){
     if(!NQ)return;
     const qi=(rnd()*NQ)|0,q=GQ[qi],cn=gCnt[qi];
@@ -507,7 +628,7 @@ function Solver(P){
       }
       const spare=v=>{const s0=siteOf[v];if(s0<0||!q.sm[s0])return true;if(q.per===2)return true;const bb=(q.per===0?s0:0)*q.nw+(q.nw>1?dayWk[vDay[v]]:0);if(q.places)return gPc[qi][bb*S+s0]>1;return q.per===0?gCnt[qi][bb]>q.lo:false};
       for(let t=0;t<24;t++){
-        const v=freeVisits[(rnd()*freeVisits.length)|0];if(v==null)return;if(!dayOk(vDay[v]))continue;
+        const v=gVisit(q);if(v==null)return;if(!dayOk(vDay[v]))continue;
         if(t<16&&!spare(v))continue;
         const list=vSites[v];if(!list.length)continue;
         let s=-1;if(q.per===0){if(list.indexOf(u)>=0||vSet[v]<0&&sAvail[u*D+vDay[v]])s=u}else{for(let k=0;k<6;k++){const c=list[(rnd()*list.length)|0];if(siteOk(c,v)){s=c;break}}}
@@ -518,7 +639,7 @@ function Solver(P){
       }
     }else{
       for(let t=0;t<14;t++){
-        const v=freeVisits[(rnd()*freeVisits.length)|0];if(v==null)return;const s=siteOf[v];if(s<0||!dayOk(vDay[v])||!siteOk(s,v))continue;
+        const v=gVisit(q);if(v==null)return;const s=siteOf[v];if(s<0||!dayOk(vDay[v])||!siteOk(s,v))continue;
         if(q.per===2){const z0=vSeat0[v],z1=z0+vSeatN[v];for(let z=z0;z<z1;z++)if(seatP[z]===u&&seatLock[z]===-2){const cs=cand[seatRole[z]*D+vDay[v]];const c=cs[(rnd()*cs.length)|0];if(c!=null&&c!==u&&!inVisit(v,c)){opSeat(z,c);return}}continue}
         if(vOpt[v]&&rnd()<.5){opSite(v,-1);return}
         const list=vSites[v];const c=list[(rnd()*list.length)|0];if(c==null||c===s||q.sm[c])continue;opSite(v,c);fillNew(v);return;
@@ -556,14 +677,86 @@ function Solver(P){
     }
     loadState(sa,za);
   }
+  function layoutFlow(){
+    const vs=[];
+    for(let v=0;v<V;v++)if(vLock[v]<0&&siteOf[v]<0&&vSites[v].length)vs.push(v);
+    if(!vs.length)return false;
+    const dist=!!rules.distinct,mixOn=!!P.mixOn&&!!W.mix;
+    const to=[],cap=[],cost=[],nx=[],esite=[];let nn=2+vs.length;
+    const head=[];const node=()=>{head.push(-1);return nn++};
+    for(let i=0;i<nn;i++)head.push(-1);
+    const add=(u,v,c,w,st)=>{to.push(v);cap.push(c);cost.push(w);nx.push(head[u]);esite.push(st);head[u]=to.length-1;to.push(u);cap.push(0);cost.push(-w);nx.push(head[v]);esite.push(-1);head[v]=to.length-1;return to.length-2};
+    const usedSD=new Set();
+    if(dist)for(let v=0;v<V;v++)if(siteOf[v]>=0)usedSD.add(siteOf[v]*D+vDay[v]);
+    const siteNode=new Array(S).fill(-1),catNode=new Array(C).fill(-1),sdNode=new Map();
+    const getSite=s=>{if(siteNode[s]<0)siteNode[s]=node();return siteNode[s]};
+    const getCat=c=>{if(catNode[c]<0)catNode[c]=node();return catNode[c]};
+    const staffable=(s,d)=>{const c=sCat[s];for(let r=0;r<R;r++)if(need[c*R+r]>cand[r*D+d].length)return false;return true};
+    const first=new Array(vs.length);
+    for(let i=0;i<vs.length;i++){
+      const v=vs[i],d=vDay[v];
+      add(0,2+i,1,0,-1);
+      if(vOpt[v])add(2+i,1,1,0,-1);
+      let list=vSites[v].filter(s=>staffable(s,d)&&!(dist&&usedSD.has(s*D+d)));
+      if(!list.length)list=vSites[v].filter(s=>!(dist&&usedSD.has(s*D+d)));
+      first[i]=head[2+i];
+      for(const s of list){
+        const jit=rnd()*.05;
+        if(dist){
+          const key=s*D+d;let nd=sdNode.get(key);
+          if(nd===undefined){nd=node();sdNode.set(key,nd);add(nd,getSite(s),1,0,-1)}
+          add(2+i,nd,1,jit,s);
+        }else add(2+i,getSite(s),1,jit,s);
+      }
+    }
+    const cnt=vs.length;
+    for(let s=0;s<S;s++){
+      if(siteNode[s]<0)continue;
+      const lu=sUses[s].length,top=sMax[s]>=0?Math.max(0,sMax[s]-lu):cnt,c=sCat[s];
+      for(let k=1;k<=Math.min(top,cnt);k++){
+        const u=lu+k;let w=1.2*W.rotate*(2*u-1-2*sExp[s]);
+        if(sMin[s]>0&&u<=sMin[s])w-=MINP;
+        add(siteNode[s],mixOn?getCat(c):1,1,w,-1);
+      }
+    }
+    if(mixOn)for(let c=0;c<C;c++){
+      if(catNode[c]<0)continue;
+      for(let k=1;k<=cnt;k++){const u=catCount[c]+k;add(catNode[c],1,1,W.mix*(2*u-1-2*catTarget[c]),-1)}
+    }
+    const dst=new Float64Array(nn),inq=new Uint8Array(nn),prev=new Int32Array(nn);
+    let routed=0;
+    for(let it=0;it<cnt;it++){
+      dst.fill(Infinity);prev.fill(-1);dst[0]=0;const q=[0];inq[0]=1;
+      for(let qi=0;qi<q.length&&qi<1e6;qi++){
+        const u=q[qi];inq[u]=0;
+        for(let e=head[u];e>=0;e=nx[e])if(cap[e]>0&&dst[u]+cost[e]<dst[to[e]]-1e-12){dst[to[e]]=dst[u]+cost[e];prev[to[e]]=e;if(!inq[to[e]]){inq[to[e]]=1;q.push(to[e])}}
+      }
+      if(!isFinite(dst[1]))break;
+      for(let x=1;x!==0;x=to[prev[x]^1]){cap[prev[x]]--;cap[prev[x]^1]++}
+      routed++;
+    }
+    for(let i=0;i<vs.length;i++){
+      let pick=-1;
+      for(let e=head[2+i];e>=0;e=nx[e]){const st=esite[e];if(st>=0&&cap[e]===0&&e%2===0){pick=st;break}}
+      if(pick>=0)apply(()=>opSite(vs[i],pick));
+    }
+    return routed===vs.length;
+  }
   function construct(warm){
     if(warm){warmLoad(warm);OPENW=0;fullCost()}
     else{reset();OPENW=0;fullCost();for(let v=0;v<V;v++)if(vLock[v]>=0)apply(()=>opSite(v,vLock[v]))}
+    if(P.layout==='flow'&&!warm&&!goalsOn)layoutFlow();
+    const aware=P.staffAware!==false,dem=new Float64Array(R*D);
+    if(aware)for(let v=0;v<V;v++){const s=siteOf[v];if(s<0)continue;const c=sCat[s],d=vDay[v];for(let r=0;r<R;r++)dem[r*D+d]+=need[c*R+r]}
     for(let v=0;v<V;v++){
       if(vLock[v]>=0||siteOf[v]>=0)continue;
-      const list=vSites[v];let best=-1,bs=vOpt[v]?0:Infinity;
-      for(const s of list){const dl=probe(()=>opSite(v,s))+rnd()*.05;if(dl<bs){bs=dl;best=s}}
-      if(best>=0)apply(()=>opSite(v,best));
+      const list=vSites[v],d=vDay[v];let best=-1,bs=vOpt[v]?0:Infinity;
+      for(const s of list){
+        let dl=probe(()=>opSite(v,s))+rnd()*.05;
+        if(aware){const c=sCat[s];let sh=0;for(let r=0;r<R;r++){const nd=need[c*R+r];if(!nd)continue;const sup=cand[r*D+d].length,o=dem[r*D+d];sh+=Math.max(0,o+nd-sup)-Math.max(0,o-sup)}dl+=sh*OPEN}
+        if(dl<bs){bs=dl;best=s}
+      }
+      if(best>=0){apply(()=>opSite(v,best));if(aware){const c=sCat[best];for(let r=0;r<R;r++)dem[r*D+d]+=need[c*R+r]}}
     }
     OPENW=OPEN;fullCost();
     const order=[];for(let z=0;z<Z;z++)if(seatAct[z]&&seatLock[z]===-2&&seatP[z]<0)order.push(z);
@@ -575,6 +768,7 @@ function Solver(P){
       if(best>=0)apply(()=>opSeat(z,best));
     }
   }
+  const mixPolish=!!P.polishMix&&!!P.mixOn&&!!W.mix;
   function polish(maxPass){
     for(let pass=0;pass<maxPass;pass++){
       let imp=false;
@@ -591,31 +785,65 @@ function Solver(P){
       for(const v of freeVisits){
         const s0=siteOf[v];if(s0<0&&!vOpt[v])continue;
         const c0=s0>=0?sCat[s0]:-1;let best=s0,bs=-1e-7;
-        for(const s of vSites[v]){if(s===s0||(!goalsOn&&c0>=0&&sCat[s]!==c0))continue;const dl=probe(()=>{opSite(v,s);if(s0<0)fillNew(v)});if(dl<bs){bs=dl;best=s}}
+        for(const s of vSites[v]){if(s===s0||(!goalsOn&&!mixPolish&&c0>=0&&sCat[s]!==c0))continue;const dl=probe(()=>{opSite(v,s);if(s0<0)fillNew(v)});if(dl<bs){bs=dl;best=s}}
         if(vOpt[v]&&s0>=0){const dl=probe(()=>opSite(v,-1));if(dl<bs){bs=dl;best=-1}}
         if(best!==s0&&attempt(()=>{opSite(v,best);if(s0<0&&best>=0)fillNew(v)},0))imp=true;
       }
       if(!imp)break;
     }
   }
+  function pickMove(){
+    if(extraOn){const x=rnd();if(x<xH)return mvHung;if(x<xH+xC)return mvChain;if(x<xH+xC+xD)return mvDaySwap}
+    const r=rnd();
+    if(NQ&&r<.1)return mvGoal;
+    if(reqV.length&&r>=.1&&r<.14)return mvReq;
+    if(r<.44)return mvReassign;
+    if(r<.72)return mvSwap;
+    if(r<.9)return mvRelocate;
+    return mvSiteSwap;
+  }
+  function attemptLA(fn,hist,idx){
+    fn();if(!log.length){clear();return false}
+    const dl=evalDelta(),dS=dl-evH-evI,cur=total-totH-totI;
+    const ok=evH<-TIE||(evH<=TIE&&(evI<-TIE||(evI<=TIE&&(dS<=0||cur+dS<=hist[idx]))));
+    if(ok){commit(dl);clear();return true}
+    undo();clear();return false;
+  }
   function anneal(iters,onTick,warm){
-    const T0=warm?1.2:(P.t0||8),T1=.02,half=warm?0:(iters*.5)|0;
-    const bestS=new Int32Array(V),bestZ=new Int32Array(Z);let bestC=Infinity;
-    if(warm){bestC=total;bestS.set(siteOf);bestZ.set(seatP)}
+    const T0=warm?1.2:(P.t0||8),T1=P.t1||.02,half=warm?0:P.bestAll===0?(iters*.5)|0:0;
+    const bestS=new Int32Array(V),bestZ=new Int32Array(Z);let bH=Infinity,bI=Infinity,bT=Infinity;
+    if(warm){bH=totH;bI=totI;bT=total-totH-totI;bestS.set(siteOf);bestZ.set(seatP)}
     const ratio=Math.log(T1/T0);
+    const stag=P.reheat?Math.max(5000,20*Z):0,useLA=!!P.la;
+    const L=Math.max(50,Math.min(2000,(Z/2)|0)),hist=new Float64Array(L).fill(total-totH-totI);
+    let since=0,Tre=0,kicks=0;
     for(let i=0;i<iters;i++){
       if((i&511)===0){openHint=hasOpen();if(onTick&&(i&4095)===0)onTick(i/iters)}
-      const T=T0*Math.exp(ratio*i/iters);
-      const r=rnd();
-      if(NQ&&r<.1)attempt(mvGoal,T);
-      else if(reqV.length&&r>=.1&&r<.14)attempt(mvReq,T);
-      else if(r<.44)attempt(mvReassign,T);
-      else if(r<.72)attempt(mvSwap,T);
-      else if(r<.9)attempt(mvRelocate,T);
-      else attempt(mvSiteSwap,T);
-      if(i>=half&&total<bestC-1e-9){bestC=total;bestS.set(siteOf);bestZ.set(seatP)}
+      const fn=pickMove();
+      if(fn.self)fn();
+      else if(useLA)attemptLA(fn,hist,i%L);
+      else{
+        let T=T0*Math.exp(ratio*i/iters);if(Tre>T)T=Tre;Tre*=.9995;
+        attempt(fn,T);
+      }
+      if(useLA)hist[i%L]=total-totH-totI;
+      let improved=false;
+      if(i>=half){
+        if(tiersOn){const t=total-totH-totI;if(lexLess(totH,totI,t,bH,bI,bT)){bH=totH;bI=totI;bT=t;bestS.set(siteOf);bestZ.set(seatP);improved=true}}
+        else if(total<bT-1e-9){bT=total;bestS.set(siteOf);bestZ.set(seatP);improved=true}
+      }
+      if(stag){
+        if(improved)since=0;else since++;
+        if(since>=stag&&i<iters*.9){
+          loadState(bestS,bestZ);
+          const k=Math.max(2,Math.min(2+kicks,Math.ceil(Z/10)));kicks++;
+          for(let j=0;j<k;j++)apply(pickMove());
+          Tre=T0*.3;since=0;hist.fill(total-totH-totI);
+        }
+      }
     }
-    if(bestC<total-1e-9)loadState(bestS,bestZ);
+    if(tiersOn){if(lexLess(bH,bI,bT,totH,totI,total-totH-totI))loadState(bestS,bestZ)}
+    else if(bT<total-1e-9)loadState(bestS,bestZ);
   }
   function run(seed,iters,onTick,warm){
     rnd=mulberry32(seed>>>0);
@@ -623,7 +851,7 @@ function Solver(P){
     anneal(iters,onTick,warm);
     polish(8);
     fullCost();
-    return {siteOf:Int32Array.from(siteOf),seatP:Int32Array.from(seatP),cost:total};
+    return {siteOf:Int32Array.from(siteOf),seatP:Int32Array.from(seatP),cost:total,tH:totH,tI:totI};
   }
 
   function visitComplete(v){
@@ -659,7 +887,7 @@ function Solver(P){
       const z0=vSeat0[v],z1=z0+vSeatN[v],open=new Array(R).fill(0),ps=[];
       for(let z=z0;z<z1;z++){if(!seatAct[z])continue;const p=seatP[z];if(p<0){if(seatLock[z]!==-1&&!openOk(v,z))open[seatRole[z]]++}else ps.push(p)}
       for(let r=0;r<R;r++)if(open[r])out.push({k:'open',sev:'error',v,r,n:open[r]});
-      for(let i=0;i<ps.length;i++)for(let j=i+1;j<ps.length;j++)if(rel[ps[i]*N+ps[j]]===1)out.push({k:'avoid',sev:'info',v,p:ps[i],q:ps[j]});
+      for(let i=0;i<ps.length;i++)for(let j=i+1;j<ps.length;j++){if(ps[i]===ps[j])out.push({k:'dupseat',sev:'warn',v,p:ps[i]});else if(rel[ps[i]*N+ps[j]]===1)out.push({k:'avoid',sev:'info',v,p:ps[i],q:ps[j]})}
     }
     for(let p=0;p<N;p++){
       const arr=pSeats[p],n=arr.length;if(!n)continue;
@@ -806,22 +1034,50 @@ function Solver(P){
     out.sort((a,b)=>(a.current?-1:0)-(b.current?-1:0)||a.delta-b.delta);
     return out;
   }
-  return {run,loadState,issues,stats,breakdown,explainSeat,explainVisit,fullCost:()=>fullCost()};
+  function sampleDeltas(seed,n){
+    rnd=mulberry32(seed>>>0);construct(null);
+    const up=[],other={hi:0,lo:0,zero:0,dh:0,di:0};
+    for(let i=0;i<n;i++){
+      const r=rnd(),fn=NQ&&r<.1?mvGoal:reqV.length&&r>=.1&&r<.14?mvReq:r<.44?mvReassign:r<.72?mvSwap:r<.9?mvRelocate:mvSiteSwap;
+      fn();if(!log.length){clear();other.zero++;other.nul=(other.nul||0)+1;continue}
+      const dl=evalDelta();undo();clear();
+      if(evH>1e-9)other.dh++;else if(evI>1e-9)other.di++;else if(dl>1e-9)up.push(dl);else if(dl<-1e-9)other.lo++;else other.zero++;
+    }
+    up.sort((a,b)=>a-b);
+    return {n:up.length,median:up.length?up[(up.length/2)|0]:0,p10:up.length?up[(up.length*.1)|0]:0,p90:up.length?up[(up.length*.9)|0]:0,other};
+  }
+  function drift(seed,n){
+    rnd=mulberry32(seed>>>0);construct(null);
+    for(let i=0;i<n;i++){const fn=pickMove();if(fn.self)fn();else attempt(fn,2)}
+    const a={t:total,h:totH,i:totI};fullCost();
+    return {dt:Math.abs(a.t-total),dh:Math.abs(a.h-totH),di:Math.abs(a.i-totI),H:totH,I:totI};
+  }
+  return {run,loadState,issues,stats,breakdown,explainSeat,explainVisit,drift,sampleDeltas,fullCost:()=>fullCost()};
 }
 
+function tiersOf(P){
+  const st=!!(P.rules&&P.rules.strict),o={};
+  for(const k of TERMS)o[k]='S';
+  o.hard='H';o.distinct='H';o.coverage='I';
+  const m=st?'H':'I';o.goalsH=m;o.bookH=m;o.recencyH=m;
+  if(st)o.rest='H';
+  return o;
+}
 function solve(P,onProgress){
   const t0=Date.now();
   if(!P.V){return {empty:true,siteOf:[],seatP:[],cost:0,issues:[],stats:{loads:new Array(P.N).fill(0),siteUse:new Array(P.S).fill(0),catCount:new Array(P.C).fill(0),seats:0,filled:0,km:0,active:[]},breakdown:emptyBd(),ms:0,runs:0,iters:0}}
-  const sv=Solver(P);let best=null;const warm=P.warm&&P.warm.siteOf&&P.warm.siteOf.length===P.V&&P.warm.seatP.length===P.Z?P.warm:null;
+  const sv=Solver(P);let best=null;const tiersOnP=P.tiers!==false;
+  const lexLess2=(a,b)=>a.tH<b.tH-1e-9||(a.tH<=b.tH+1e-9&&(a.tI<b.tI-1e-9||(a.tI<=b.tI+1e-9&&(a.cost-a.tH-a.tI)<(b.cost-b.tH-b.tI)-1e-9)));const warm=P.warm&&P.warm.siteOf&&P.warm.siteOf.length===P.V&&P.warm.seatP.length===P.Z?P.warm:null;
   const runs=warm?1:Math.max(1,P.runs|0),iters=warm?Math.max(4000,(P.iters*.4)|0):P.iters;
   for(let k=0;k<runs;k++){
-    const r=sv.run((P.seed+k*7919)>>>0,iters,f=>onProgress&&onProgress((k+f)/runs),warm);
-    if(!best||r.cost<best.cost-1e-9)best=r;
+    const r=sv.run((P.seed+k*7919+(P.round|0)*104729)>>>0,iters,f=>onProgress&&onProgress((k+f)/runs),warm);
+    if(!best||(tiersOnP?lexLess2(r,best):r.cost<best.cost-1e-9))best=r;
     if(onProgress)onProgress((k+1)/runs);
   }
   sv.loadState(best.siteOf,best.seatP);
   const bd=sv.breakdown();
-  return {siteOf:Array.from(best.siteOf),seatP:Array.from(best.seatP),cost:best.cost,issues:sv.issues(),stats:sv.stats(),breakdown:bd,ms:Date.now()-t0,runs,iters,warm:!!warm};
+  const stt=sv.stats(),lb=P.lbOpen||0,openN=stt.seats-stt.filled;
+  return {siteOf:Array.from(best.siteOf),seatP:Array.from(best.seatP),cost:best.cost,coverage:{open:openN,lowerBound:lb,optimal:openN<=lb},tiers:tiersOf(P),tierCost:{H:best.tH,I:best.tI,S:best.cost-best.tH-best.tI},issues:sv.issues(),stats:stt,breakdown:bd,ms:Date.now()-t0,runs,iters,warm:!!warm};
 }
 function explain(P,sol,q){
   const sv=Solver(P);
@@ -834,7 +1090,9 @@ function evaluate(P,sol){
   sv.loadState(Int32Array.from(sol.siteOf),Int32Array.from(sol.seatP));
   return {cost:sv.fullCost(),issues:sv.issues(),stats:sv.stats(),breakdown:sv.breakdown()};
 }
-const API={solve,explain,evaluate,TERMS};
+function checkDrift(P,seed,n){return Solver(P).drift(seed,n)}
+function sampleDeltas(P,seed,n){return Solver(P).sampleDeltas(seed,n)}
+const API={solve,explain,evaluate,checkDrift,sampleDeltas,tiersOf,TERMS};
 const isWorker=typeof window==='undefined'&&typeof self!=='undefined'&&typeof importScripts==='function';
 if(isWorker){
   self.onmessage=function(e){

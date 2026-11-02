@@ -103,6 +103,7 @@ function issueText(x,D){
     case 'maxweek':return t('i_maxweek',{p:pn(x.p),n:x.n,max:x.max});
     case 'ban':return t('i_ban',{p:pn(x.p),s:sn(x.s),d:vd(x.v)});
     case 'unavail':return t('i_unavail',{p:pn(x.p),d:dn(x.d)});
+    case 'dupseat':return t('i_dupseat',{p:pn(x.p),s:vs(x.v),d:vd(x.v)});
     case 'sitemax':return t('i_sitemax',{s:sn(x.s),n:x.n,max:x.max});
     case 'sitemin':return t('i_sitemin',{s:sn(x.s),n:x.n,min:x.min});
     case 'sitegap':return t('i_sitegap',{s:sn(x.s),d1:dn(x.d1),d2:dn(x.d2)});
@@ -139,6 +140,9 @@ function warnText(w){
     case 'norole':return t('w_norole',{r:rn(w.r)});
     case 'capacity':return t('w_capacity',{r:rn(w.r),need:w.need,cap:w.cap});
     case 'minover':{const c=catOf(w.c);return t('w_minover',{c:c?c.name:'—',need:w.need,have:w.have})}
+    case 'pshort':case 'prest':{const days=(w.days||[]).map(x=>fmtD(x.iso)+(x.n>1?' ×'+x.n:'')).join(', ');return t(w.k==='pshort'?'w_pshort':w.bendable?'w_prestB':'w_prest',{r:rn(w.r),need:w.need,have:w.have,days})}
+    case 'psitemax':return t('w_psitemax',{need:w.need,have:w.have});
+    case 'psitemin':return t('w_psitemin',{need:w.need,have:w.have});
     case 'tight':return t('w_tight',{r:rn(w.r),d1:fmtD(w.d1),d2:fmtD(w.d2),need:w.need,free:w.free});
     case 'goalshort':return t('w_goalshort',{need:w.need,have:w.have});
     case 'injbusy':return t('w_injbusy',{g:goalText(byId(A().ws.goals,w.g)),n:w.n});
@@ -482,7 +486,7 @@ function explainPop(q){
   const x=q.res;
   let h='<div class="pophead"><div><div class="kicker">'+esc(t('why'))+'</div>';
   const termChips=terms=>{const ks=Object.keys(terms||{}).filter(k=>Math.abs(terms[k])>=.05).sort((p,q)=>Math.abs(terms[q])-Math.abs(terms[p])).slice(0,4);
-    return ks.length?'<div class="terms">'+ks.map(k=>'<span class="tchip '+(terms[k]>0?'up':'dn')+'">'+esc(t('term_'+k))+' '+(terms[k]>0?'+':'')+fmtN(terms[k])+'</span>').join('')+'</div>':''};
+    return ks.length?'<div class="terms">'+ks.map(k=>'<span class="tchip '+(terms[k]>0?'up':'dn')+'">'+esc(t('term_'+k))+(q.tiers&&q.tiers[k]&&q.tiers[k]!=='S'?' ('+esc(t('tier_'+q.tiers[k]))+')':'')+' '+(terms[k]>0?'+':'')+fmtN(terms[k])+'</span>').join('')+'</div>':''};
   const dl=v=>{if(v==null)return '';if(Math.abs(v)<.05)return '<span class="delta">±0</span>';return '<span class="delta '+(v>0?'up':'dn')+'">'+(v>0?'+':'')+fmtN(v)+'</span>'};
   if(q.seat!=null){
     const z=q.seat,st=m.seats[z],vis=m.visits[st.v],s=D.siteOfV(st.v),ro=roleOf(m.roles[st.r]);
@@ -490,6 +494,7 @@ function explainPop(q){
     h+='<h3 class="ctitle">'+esc(ro?ro.name:'')+' · '+esc(s?s.name:'—')+'</h3><div class="tiny muted">'+esc(fmtDL(m.days[vis.d].iso))+'</div></div><button class="ibtn" data-act="popClose">'+ic('ic-x')+'</button></div>';
     h+='<div class="row" style="margin-bottom:10px">'+(lk?'<button class="btn sm" data-act="unpinSeat" data-z="'+z+'">'+ic('ic-lock')+esc(t('unpin'))+'</button>':'<button class="btn sm" data-act="pinSeat" data-z="'+z+'">'+ic('ic-lock')+esc(t('pin'))+'</button>')
       +(lk!=='__open'?'<button class="btn sm ghost" data-act="openSeat" data-z="'+z+'">'+esc(t('leaveOpen'))+'</button>':'')+'</div>';
+    if(q.proven)h+='<div class="banner stale" style="margin-bottom:10px">'+ic('ic-info')+'<span class="grow">'+esc(t('x_proven'))+'</span></div>';
     h+='<div class="mlab">'+esc(t('alts'))+'</div>';
     if(!x){h+='<div class="muted tiny">'+esc(t('explainStale'))+'</div>';return h}
     x.slice(0,40).forEach(o=>{
@@ -830,7 +835,7 @@ function insightsView(){
     +chk(t('a_rank'),cnt('rankgap'),R.rankGate!=='off')
     +chk(t('a_perday'),cnt('perday'),R.perDay>0)
     +chk(t('a_limits'),cnt('maxload')+cnt('maxweek'))
-    +chk(t('a_avail'),cnt('unavail')+cnt('ban')+cnt('siteoff'))
+    +chk(t('a_avail'),cnt('unavail')+cnt('ban')+cnt('siteoff')+cnt('dupseat'))
     +chk(t('a_dup'),cnt('dup'),R.distinct)
     +chk(t('a_bounds'),cnt('sitemax')+cnt('sitemin'))
     +chk(t('a_gap'),cnt('sitegap'),R.siteGap>0)
@@ -845,7 +850,7 @@ function insightsView(){
     +'<div class="lbl">'+esc(t('targeted'))+'</div><div class="mixbar">'+cats.map((c,i)=>'<i style="--c:'+esc(c.color)+';opacity:.55;width:'+(m.catTarget[i]/tot*100)+'%"></i>').join('')+'</div>'
     +'<div class="legend">'+cats.map((c,i)=>'<span><span class="dot" style="--c:'+esc(c.color)+'"></span>'+esc(c.name)+' <b>'+st.catCount[i]+'</b><span class="muted mono tiny">/ '+r1(m.catTarget[i])+'</span></span>').join('')+'</div>';
   const bd=r.breakdown||{};const bks=Object.keys(bd).filter(k=>bd[k]>.05).sort((x,y)=>bd[y]-bd[x]);const bmax=Math.max(1,...bks.map(k=>bd[k]));
-  h+='<div class="grouplbl" style="margin-top:22px">'+esc(t('costT'))+'</div>'+bks.map(k=>'<div class="costrow"><span>'+esc(t('term_'+k))+'</span><div class="bar"><i style="width:'+(bd[k]/bmax*100)+'%"></i></div><span class="cv2">'+fmtN(bd[k])+'</span></div>').join('')
+  h+='<div class="grouplbl" style="margin-top:22px">'+esc(t('costT'))+'</div>'+bks.map(k=>'<div class="costrow"><span>'+esc(t('term_'+k))+(r.tiers&&r.tiers[k]?' <span class="muted mono tiny">'+esc(t('tier_'+r.tiers[k]))+'</span>':'')+'</span><div class="bar"><i style="width:'+(bd[k]/bmax*100)+'%"></i></div><span class="cv2">'+fmtN(bd[k])+'</span></div>').join('')
     +'<p class="quiet">'+ic('ic-info')+esc(t('costNote'))+'</p></section></div>';
   const maxL=Math.max(1,...ld,...m.pTarget.map(Math.ceil));
   h+='<div class="grid2"><section class="card"><div class="card-head"><div><div class="kicker">'+esc(t('kFair'))+'</div><h2 class="ctitle">'+esc(t('loadT'))+'</h2></div></div>';

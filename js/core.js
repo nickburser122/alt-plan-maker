@@ -661,6 +661,101 @@ function fpOf(ws){
 }
 function fpWithLocks(ws){return fnv(fpOf(ws)+JSON.stringify(ws.locks))}
 
+function restDays(span,rm,om){const c=rm+Math.max(1,om);return Math.floor(span/c)*rm+Math.min(rm,span%c)}
+function maxWorkable(cand,dayNum,rm,om){
+  const n=cand.length;if(!n)return 0;
+  const R=rm>0?rm:1,dp=cand.map(()=>new Array(R+1).fill(-1));
+  let best=0;
+  for(let m=0;m<n;m++){
+    dp[m][1]=Math.max(dp[m][1],1);
+    for(let k=0;k<m;k++){
+      const g=dayNum[cand[m]]-dayNum[cand[k]];
+      for(let r=1;r<=R;r++){
+        const v=dp[k][r];if(v<0)continue;
+        if(g===1){
+          if(rm>0){if(r+1<=R&&v+1>dp[m][r+1])dp[m][r+1]=v+1}
+          else if(v+1>dp[m][1])dp[m][1]=v+1;
+        }else if(g-1>=om){if(v+1>dp[m][1])dp[m][1]=v+1}
+      }
+    }
+    for(let r=1;r<=R;r++)if(dp[m][r]>best)best=dp[m][r];
+  }
+  return best;
+}
+function dinic(n){
+  const head=new Int32Array(n).fill(-1),to=[],cap=[],nx=[];
+  const add=(u,v,c)=>{to.push(v);cap.push(c);nx.push(head[u]);head[u]=to.length-1;to.push(u);cap.push(0);nx.push(head[v]);head[v]=to.length-1;return to.length-2};
+  const run=(s,t)=>{
+    let f=0;const lvl=new Int32Array(n),it=new Int32Array(n);
+    const bfs=()=>{lvl.fill(-1);lvl[s]=0;const q=[s];for(let i=0;i<q.length;i++){const u=q[i];for(let e=head[u];e>=0;e=nx[e])if(cap[e]>0&&lvl[to[e]]<0){lvl[to[e]]=lvl[u]+1;q.push(to[e])}}return lvl[t]>=0};
+    const dfs=(u,fl)=>{if(u===t)return fl;for(;it[u]>=0;it[u]=nx[it[u]]){const e=it[u];if(cap[e]>0&&lvl[to[e]]===lvl[u]+1){const d=dfs(to[e],Math.min(fl,cap[e]));if(d>0){cap[e]-=d;cap[e^1]+=d;return d}}}return 0};
+    while(bfs()){for(let i=0;i<n;i++)it[i]=head[i];let x;while((x=dfs(s,1e9))>0)f+=x}
+    return f;
+  };
+  return {add,run,cap};
+}
+function preflight(P){
+  const D=P.D,V=P.V,R=P.R,proven=[],warnings=[];
+  if(!V||!D)return {proven,warnings,lbOpen:0};
+  const strict=!!P.rules.strict,perDay=P.rules.perDay>0?P.rules.perDay:10;
+  const dem=Array.from({length:R},()=>new Array(D).fill(0)),vis=Array.from({length:R},()=>new Array(D).fill(0));
+  const sitesOf=v=>{
+    const d=P.vDay[v];if(P.vLock[v]>=0)return [P.vLock[v]];
+    let a=[];for(let s=0;s<P.S;s++)if(P.sAvail[s*D+d])a.push(s);
+    if(P.vSet[v]>=0){const sm=P.vsets[P.vSet[v]];const b=a.filter(s=>sm[s]);a=b}
+    return a;
+  };
+  let nVis=0;
+  for(let v=0;v<V;v++){
+    if(P.vOpt[v])continue;
+    const list=sitesOf(v);if(!list.length)continue;
+    nVis++;const d=P.vDay[v],z0=P.vSeat0[v],z1=z0+P.vSeatN[v];
+    for(let r=0;r<R;r++){
+      let m=Infinity;for(const s of list)m=Math.min(m,P.need[P.sCat[s]*P.R+r]);
+      if(!isFinite(m)||m<=0)continue;
+      let fixed=0;for(let z=z0;z<z1;z++)if(P.seatRole[z]===r&&P.seatIdx[z]<m&&P.seatLock[z]!==-2)fixed++;
+      dem[r][d]+=m-fixed;if(m-fixed>0)vis[r][d]++;
+    }
+  }
+  const nWk=Math.max(1,P.nWk||1),span=P.dayNum[D-1]-P.dayNum[0]+1;
+  let lbOpen=0;
+  for(let r=0;r<R;r++){
+    const total=dem[r].reduce((a,b)=>a+b,0);if(!total)continue;
+    const mem=P.roleMembers[r];
+    const solve=useRest=>{
+      const wk=P.dayWk||new Array(D).fill(0);
+      const wkCap=P.pMaxWeek;
+      let extra=0;const pw=mem.map(p=>{if(wkCap[p]<0)return null;const m=new Map();for(let d=0;d<D;d++)if(!m.has(wk[d]))m.set(wk[d],extra++);return m});
+      const base=2+mem.length,dayBase=base+extra,n=dayBase+D,g=dinic(n),S0=0,T0=1;
+      mem.forEach((p,i)=>{
+        let avail=0;for(let d=0;d<D;d++)if(P.pAvail[p*D+d])avail++;
+        let c=avail*perDay;
+        if(P.pMaxLoad[p]>=0)c=Math.min(c,P.pMaxLoad[p]);
+        if(P.pMaxWeek[p]>=0)c=Math.min(c,P.pMaxWeek[p]*nWk);
+        if(useRest){const rm=P.pRun[p],om=P.pOff[p];if(rm>0||om>0){const cand=[];for(let d=0;d<D;d++)if(P.pAvail[p*D+d]&&dem[r][d]>0)cand.push(d);c=Math.min(c,maxWorkable(cand,P.dayNum,rm,om)*perDay)}}
+        g.add(S0,2+i,Math.max(0,c));
+        if(pw[i])for(const [,idx] of pw[i])g.add(2+i,base+idx,Math.max(0,wkCap[p]));
+        for(let d=0;d<D;d++)if(P.pAvail[p*D+d]&&dem[r][d]>0){
+          const from=pw[i]?base+pw[i].get(wk[d]):2+i;
+          g.add(from,dayBase+d,Math.min(perDay,vis[r][d]));
+        }
+      });
+      const sink=[];for(let d=0;d<D;d++)sink.push(dem[r][d]>0?g.add(dayBase+d,T0,dem[r][d]):-1);
+      const f=g.run(S0,T0);
+      const days=[];for(let d=0;d<D;d++)if(sink[d]>=0&&g.cap[sink[d]]>0)days.push({d,n:g.cap[sink[d]]});
+      return {have:f,short:total-f,days};
+    };
+    const hard=solve(false),rest=solve(true);
+    if(hard.short>0){proven.push({k:'pshort',r,need:total,have:hard.have,days:hard.days});lbOpen+=hard.short}
+    if(rest.short>hard.short){proven.push({k:'prest',r,need:total,have:rest.have,days:rest.days,bendable:!strict});if(strict)lbOpen+=rest.short-hard.short}
+  }
+  let sumMax=0,allMax=P.S>0;
+  for(let s=0;s<P.S;s++){if(P.sMax[s]>=0)sumMax+=P.sMax[s];else allMax=false}
+  if(allMax&&sumMax<nVis)proven.push({k:'psitemax',need:nVis,have:sumMax});
+  let sumMin=0;for(let s=0;s<P.S;s++)sumMin+=Math.max(0,P.sMin[s]);
+  if(sumMin>nVis)warnings.push({k:'psitemin',need:sumMin,have:nVis});
+  return {proven,warnings,lbOpen};
+}
 function compile(ws){
   const {start,end}=rangeOf(ws);
   const warn=[];
@@ -815,7 +910,7 @@ function compile(ws){
   const nWeeks=new Set(dayWeek).size||1;
   const pRun=people.map(p=>p.runMax===''?ws.rules.runMax:+p.runMax),pOff=people.map(p=>p.offMin===''?(p.runMax===''?ws.rules.offMin:Math.max(1,ws.rules.offMin)):+p.offMin);
   const capOf=pi=>{let a=0;for(let d=0;d<D;d++)a+=pAvail[pi*D+d];let c=a*(ws.rules.perDay||10);const p=people[pi];if(p.maxLoad!=='')c=Math.min(c,+p.maxLoad);if(p.maxWeek!=='')c=Math.min(c,+p.maxWeek*nWeeks);
-    const rm=pRun[pi],om=pOff[pi];if(rm>0&&span>0)c=Math.min(c,Math.ceil(span*rm/(rm+Math.max(1,om)))*(ws.rules.perDay||1));return c};
+    const rm=pRun[pi],om=pOff[pi];if(rm>0&&span>0)c=Math.min(c,restDays(span,rm,om)*(ws.rules.perDay||1));return c};
   const wkIx={};const dayWk=dayWeek.map(w=>wkIx[w]!==undefined?wkIx[w]:(wkIx[w]=Object.keys(wkIx).length));const nWk=Object.keys(wkIx).length;
   const bk=compileBook(ws,people,sites,days,cats,roles);
   bk.warn.forEach(x=>warn.push(x));
@@ -852,7 +947,17 @@ function compile(ws){
     Dn,seed:ws.engine.seed,iters,runs:ws.engine.runs};
   const map={start,end,days:days.map(d=>({iso:d.iso,n:d.n,focus:d.cfg.focus})),visits,seats:seats.map(s=>({key:s.key,v:s.v,r:s.r,i:s.i})),
     roles:roles.map(r=>r.id),cats:cats.map(c=>c.id),sites:sites.map(s=>s.id),people:people.map(p=>p.id),pTarget,catTarget,demand,sExp,gMin,gMax,book:bk.ids,weeks:(()=>{const o=[];days.forEach((d,i)=>{if(o[dayWk[i]]==null)o[dayWk[i]]=d.iso});return o})(),goalOf:GC.goals.map(q=>q.gid),goalInt:GC.goals.map(q=>q.vg>=0?1:0),reqDates,reqAbsent};
-  return {P,map,warn};
+  const pre=preflight(P);P.lbOpen=pre.lbOpen;P.provenRoles=pre.proven.filter(x=>x.k==='pshort'||(x.k==='prest'&&!x.bendable)).map(x=>x.r);
+  const rid=i=>roles[i].id;
+  const dayList=l=>l.slice(0,8).map(x=>({iso:days[x.d].iso,n:x.n}));
+  const provenR=new Set();
+  pre.proven.forEach(x=>{
+    if(x.k==='pshort'||x.k==='prest'){provenR.add(rid(x.r));warn.push({k:x.k,r:rid(x.r),need:x.need,have:x.have,days:dayList(x.days),bendable:x.bendable})}
+    else warn.push(x);
+  });
+  pre.warnings.forEach(x=>warn.push(x));
+  for(let i=warn.length-1;i>=0;i--)if(warn[i].k==='capacity'&&provenR.has(warn[i].r))warn.splice(i,1);
+  return {P,map,warn,pre};
 }
 
 function compileGoals(ws,X){
@@ -1107,7 +1212,7 @@ G.MV={$,$$,esc,uid,clamp,sum,avg,num,intOr,byId,clone,fnv,gini,mulberry32,
   pISO,fISO,addISO,dowOf,dayNum,diffDays,todayISO,validISO,weekStartOf,daysIn,
   COLORS,LEVELS,WEIGHT_KEYS,defaultWeights,defaultUseW,defaultRules,defaultEngine,TERM_DEFAULT,
   TEMPLATES,TEMPLATE_ORDER,blankWS,mkRole,mkCat,mkLoc,mkSite,mkPerson,mkGoal,normalize,migrateLegacy,fromDataset,syncLoc,
-  Store,rangeOf,dayCfg,planDays,planTotal,enabledDays,requiredDays,dayUseOf,flag,plannable,goalSites,goalNeed,fpOf,fpWithLocks,compile,csvParse,csvRow,
+  Store,rangeOf,dayCfg,planDays,planTotal,enabledDays,requiredDays,dayUseOf,flag,plannable,goalSites,goalNeed,fpOf,fpWithLocks,compile,preflight,csvParse,csvRow,
   SENSES,WHO_K,WHAT_K,RELS,TEAM_OPS,COUNT_OPS,FLIP,isHard,normRule,mkRule,whoMatch,whatMatch,resolveBook,resolveGoals,parseDates,overlayList,bookForExport,toDataset,mergeDataset,locDist,arr7,
   RC_MODES,defaultRecency,normRecency,rcWindow,parseAnyDate,parseHistoryRows,historyAoa,mergeHistory,relinkHistory,histFromPlan,recencyBoard,hnorm,
   normGoal,goalBounds,goalPeople,goalsForExport,injectCount,injPlaces,injBounds,whenMatch,normWhen,MULTI_K,G_PER,G_OP,G_MODE,weeksIn};

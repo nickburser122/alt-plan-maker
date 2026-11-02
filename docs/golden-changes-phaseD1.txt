@@ -1,0 +1,10 @@
+  care/fast/1 cost 157.73201 → 160.13201 H 0 → 0 filled 36/36 → 36/36
+  care/fast/2 cost 156.337273 → 160.070857 H 0 → 0 filled 36/36 → 36/36
+  care/fast/3 cost 159.237273 → 160.188986 H 0 → 0 filled 36/36 → 36/36
+  care/fast/7 cost 159.517474 → 159.210038 H 0 → 0 filled 36/36 → 36/36
+  care/fast/42 cost 160.191993 → 157.547799 H 0 → 0 filled 36/36 → 36/36
+  care/balanced/1 cost 158.121484 → 157.783472 H 0 → 0 filled 36/36 → 36/36
+  care/balanced/2 cost 156.337273 → 157.654149 H 0 → 0 filled 36/36 → 36/36
+  care/balanced/3 cost 158.099261 → 157.647799 H 0 → 0 filled 36/36 → 36/36
+  care/balanced/7 cost 158.605694 → 156.683472 H 0 → 0 filled 36/36 → 36/36
+  care/balanced/42 cost 158.730005 → 156.394416 H 0 → 0 filled 36/36 → 36/36
